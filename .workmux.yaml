@@ -1,0 +1,3 @@
+# workmux project config: worktrees live inside this checkout, in .worktrees/
+# (gitignored), not beside it in ../<repo>__worktrees.
+worktree_dir: .worktrees
