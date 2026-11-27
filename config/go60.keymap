@@ -173,8 +173,7 @@
 #define LAYER_MouseSlow 15
 #define LAYER_MouseFast 16
 #define LAYER_MouseWarp 17
-#define LAYER_Gaming 18
-#define LAYER_Magic 19
+#define LAYER_Magic 18
 
 /* To deal with the situation where there is no Lower layer, to keep &lower happy */
 #ifndef LAYER_Lower
@@ -1367,13 +1366,6 @@
             layers = <LAYER_HRM_WinLinx LAYER_Autoshift LAYER_Typing>;
         };
 
-        // toggle gaming layer - TailorKey
-        combo_gaming_toggle_v1_TKZ {
-            timeout-ms = <50>;
-            key-positions = <POS_LH_C2R5 POS_LH_C1R4>;
-            bindings = <&tog LAYER_Gaming>;
-        };
-
         // Alt Tab Switcher (Cursor Layer) - TailorKey
         combo_tabswitch_alt_v1_TKZ {
             key-positions = <POS_LH_T1 POS_LH_C1R4>;
@@ -1682,17 +1674,6 @@
  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
  &trans  &trans  &trans  &trans  &trans  &trans
  &trans  &trans  &trans  &trans  &trans  &trans
-            >;
-        };
-
-        layer_Gaming {
-            bindings = <
- &kp ESC  &kp N1  &kp N2  &kp N3  &kp N4  &kp N5  &kp N6  &kp N7  &kp N8  &kp N9  &kp N0  &kp MINUS
- &kp RET  &kp TAB  &kp Q  &kp W  &kp E  &kp R  &kp Y  &kp U  &kp I  &kp O  &kp P  &kp LS(EQUAL)
- &kp GRAVE  &kp LSHFT  &kp A  &kp S  &kp D  &kp F  &kp H  &kp J  &kp K  &kp L  &kp SEMI  &kp LS(SQT)
- &kp B  &kp LCTRL  &kp Z  &kp X  &kp C  &kp V  &kp N  &kp M  &kp UP  &kp LS(COMMA)  &kp LS(DOT)  &kp LGUI
- &kp LALT  &kp T  &kp G  &kp LEFT  &kp DOWN  &kp RIGHT
- &kp SPACE  &kp LSHFT  &kp LCTRL  &kp BSPC  &kp LALT  &kp RET
             >;
         };
 
