@@ -269,7 +269,7 @@ banner "Go60: flash firmware onto both halves"
 
 stage "Firmware image"
 if [[ -z "$image" ]]; then
-  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  tmp=$(mktemp -d); trap "rm -rf -- '$tmp'" EXIT  # expand now: tmp is local, gone when EXIT fires
   say "Downloading the go60.uf2 CI built for HEAD $(git rev-parse --short HEAD 2>/dev/null)..."
   fetch_ci_image "$tmp"
   image="$tmp/go60.uf2"

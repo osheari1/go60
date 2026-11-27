@@ -104,6 +104,25 @@ f="$T/f3"; flash_env "$f"; export GO60_TIMEOUT=1
 check "go60-flash: times out loudly with no drive" \
   '! PATH="$stubs:$PATH" "$ROOT/bin/go60-flash" "$img" </dev/null >"$f/log" 2>&1 && grep -q "timed out" "$f/log"'
 
+# CI path: git and gh stubbed; gh "downloads" a go60.uf2 and records where.
+ci="$T/ci"; mkdir -p "$ci"
+printf '#!/bin/sh\ncase "$1" in rev-parse) echo abc1234 ;; branch) echo "  origin/main" ;; esac\n' > "$ci/git"
+cat > "$ci/gh" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+  "run list") echo 42 ;;
+  "run download") d=$(echo "$@" | sed 's/.*-D \([^ ]*\).*/\1/'); echo firmware > "$d/go60.uf2"; echo "$d" > "$CI_LOG" ;;
+esac
+EOF
+chmod +x "$ci"/*
+
+f="$T/f4"; flash_env "$f"; export GO60_TIMEOUT=5 CI_LOG="$T/f4/dl"
+fake_half GO60RHBOOT; fake_half GO60LHBOOT
+check "go60-flash: CI image flashes, exits 0 and removes its download" \
+  'PATH="$ci:$stubs:$PATH" "$ROOT/bin/go60-flash" </dev/null >"$f/log" 2>&1 \
+   && ! grep -q unbound "$f/log" && [[ -s "$CI_LOG" && ! -e "$(cat "$CI_LOG")" ]] \
+   && [[ -f "$MNT_DIR/GO60LHBOOT/go60.uf2" ]]'
+
 check "go60-flash: refuses a non-.uf2 file" \
   '! "$ROOT/bin/go60-flash" "$ROOT/README.md" >/dev/null 2>&1'
 
