@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 - [ ] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
 - [ ] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
 - [ ] Unreadable input exits non-zero with a clear message on stderr and writes no page.
@@ -29,3 +29,4 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - Want: `--open` finds the Layout in this order: the git checkout of the current directory if it has `config/go60.json` (like `go60-import`), else `${GO60_REPO:-$HOME/rs/go60}/config/go60.json`. If neither exists, exit non-zero with a `go60-train: ...` message on stderr, no traceback.
   - Red first: add a suite check that copies `bin/go60-train`, `lib/trainer.html` and `config/info.json` into a temp root with no Layout, symlinks it from a temp bin, and runs `--open` from an unrelated temp dir (browser stubbed). Commit nothing until you have seen it fail for the right reason. Then make it pass, and add a check for the missing-Layout message.
 
+- Closed by RALPH: go60-train --open now finds the Layout in the cwd's git checkout, else ${GO60_REPO:-~/rs/go60}; no Layout gives a go60-train: message, no traceback. Suite checks a fake cfg install (symlinked, no Layout) run from an unrelated dir, seen red first. Still needs a human: merge, tag go60, bump cfg component.
