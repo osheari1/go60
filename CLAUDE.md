@@ -11,7 +11,16 @@ Job: hold my Go60 Layout and the tools that build and flash it. Read README.md a
 - Do not run `go60-flash`: it needs a human at the keyboard.
 - Branch work goes in a worktree under `.worktrees/` (see `~/rs/home/docs/agents/workmux.md`).
 
-## Issue tracker
+## Agent skills
 
-- Local markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
-- Triage roles as `Status:` lines. See `docs/agents/triage-labels.md`.
+### Issue tracker
+
+Local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles, each label equal to its role name, recorded as `Status:` lines. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
