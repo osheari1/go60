@@ -15,7 +15,7 @@ jobs:
           # Pinned firmware: an upgrade is a deliberate commit here.
           ref: v26.09
           path: src
-      - name: Tests (golden Keymap, stale Keymap, import, flash)
+      - name: Tests (golden Keymap, stale Keymap, import, flash, trainer)
         run: tests/run
       - uses: cachix/install-nix-action@v25
         with:

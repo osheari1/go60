@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Go60 Trainer</title>
+<style>
+  :root { --bg: #16181d; --fg: #e6e6e6; --dim: #7b8190; --key: #262a33; --edge: #3a404c;
+          --hold: #f0b45a; --sel: #5aa9f0; --trans: #1d2027; --danger: #e5534b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1rem 1.5rem; background: var(--bg); color: var(--fg);
+         font: 15px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
+  .title { color: var(--dim); margin-bottom: .75rem; }
+  #layers { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: 1rem; }
+  #layers button { background: var(--key); color: var(--fg); border: 1px solid var(--edge);
+                   border-radius: 4px; padding: .25rem .6rem; font: inherit; cursor: pointer; }
+  #layers button[aria-pressed="true"] { border-color: var(--sel); color: var(--sel); }
+  svg { width: 100%; max-width: 1100px; display: block; }
+  .k rect { fill: var(--key); stroke: var(--edge); stroke-width: 1; }
+  .k { cursor: pointer; }
+  .k.trans rect { fill: var(--trans); stroke-dasharray: 3 3; }
+  .k.none rect { fill: var(--bg); }
+  .k.danger rect { stroke: var(--danger); }
+  .k.sel rect { stroke: var(--sel); stroke-width: 3; }
+  .k text { fill: var(--fg); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .k .hold { fill: var(--hold); font-size: 9px; }
+  .k.trans .tap { fill: var(--dim); }
+  #info { margin-top: 1rem; min-height: 4.5rem; max-width: 1100px; padding: .75rem 1rem;
+          border: 1px solid var(--edge); border-radius: 6px; }
+  #info .where { color: var(--dim); }
+  #info .danger { color: var(--danger); }
+  .legend { color: var(--dim); font-size: .85rem; margin-top: .5rem; }
+  .legend b { color: var(--hold); font-weight: normal; }
+</style>
+</head>
+<body>
+<h1>Go60 Trainer · Explore</h1>
+<div class="title" id="title"></div>
+<nav id="layers" aria-label="Layers"></nav>
+<svg id="board" role="img" aria-label="Go60 keys on the chosen layer"></svg>
+<div class="legend">Top: tap. <b>Bottom: hold.</b> Dashed: pass-through (shows what it falls through to). Select a key to see what it sends; ← → change layer.</div>
+<section id="info" aria-live="polite">Select a key.</section>
+
+<script id="data-layout" type="application/json">{{layout}}</script>
+<script id="data-keys" type="application/json">{{keys}}</script>
+
+<script id="reach">
+// Reach: everything that reads the Layout's structure. Loadable by Node with no browser (tests/page.js).
+var Reach = (function () {
+  'use strict';
+
+  var CHAR = { N1: '1', N2: '2', N3: '3', N4: '4', N5: '5', N6: '6', N7: '7', N8: '8', N9: '9', N0: '0',
+    MINUS: '-', EQUAL: '=', LBKT: '[', RBKT: ']', BSLH: '\\', SEMI: ';', SQT: "'", SINGLE_QUOTE: "'",
+    APOS: "'", GRAVE: '`', COMMA: ',', DOT: '.', FSLH: '/', EXCL: '!', AT: '@', HASH: '#', DLLR: '$',
+    PRCNT: '%', CARET: '^', AMPS: '&', STAR: '*', ASTRK: '*', LPAR: '(', RPAR: ')', UNDER: '_',
+    PLUS: '+', LBRC: '{', RBRC: '}', PIPE: '|', COLON: ':', DQT: '"', TILDE: '~', LT: '<', GT: '>',
+    QMARK: '?', KP_N0: '0', KP_N1: '1', KP_N2: '2', KP_N3: '3', KP_N4: '4', KP_N5: '5', KP_N6: '6',
+    KP_N7: '7', KP_N8: '8', KP_N9: '9', KP_DOT: '.', KP_PLUS: '+', KP_MINUS: '-', KP_MULTIPLY: '*',
+    KP_DIVIDE: '/', KP_EQUAL: '=', KP_COMMA: ',' };
+  var SHIFTED = { N1: '!', N2: '@', N3: '#', N4: '$', N5: '%', N6: '^', N7: '&', N8: '*', N9: '(', N0: ')',
+    MINUS: '_', EQUAL: '+', LBKT: '{', RBKT: '}', BSLH: '|', SEMI: ':', SQT: '"', SINGLE_QUOTE: '"',
+    APOS: '"', GRAVE: '~', COMMA: '<', DOT: '>', FSLH: '?' };
+  // [label on the key, plain words]
+  var NAMED = { SPACE: ['␣', 'Space'], RET: ['⏎', 'Enter'], ENTER: ['⏎', 'Enter'], BSPC: ['⌫', 'Backspace'],
+    DEL: ['Del', 'Delete'], TAB: ['⇥', 'Tab'], ESC: ['Esc', 'Escape'], INS: ['Ins', 'Insert'],
+    HOME: ['Home', 'Home'], END: ['End', 'End'], PG_UP: ['PgUp', 'Page Up'], PG_DN: ['PgDn', 'Page Down'],
+    UP: ['↑', 'Up arrow'], DOWN: ['↓', 'Down arrow'], LEFT: ['←', 'Left arrow'], RIGHT: ['→', 'Right arrow'],
+    CAPS: ['Caps', 'Caps Lock'], PSCRN: ['PrtSc', 'Print Screen'], SLCK: ['ScrLk', 'Scroll Lock'],
+    PAUSE_BREAK: ['Pause', 'Pause'], K_APP: ['Menu', 'Menu key'], KP_NUM: ['NumLk', 'Num Lock'],
+    KP_ENTER: ['⏎', 'keypad Enter'],
+    C_VOL_UP: ['Vol+', 'Volume up'], C_VOL_DN: ['Vol−', 'Volume down'], C_MUTE: ['Mute', 'Mute'],
+    C_PP: ['⏯', 'Play/Pause'], C_PLAY: ['▶', 'Play'], C_NEXT: ['⏭', 'Next track'], C_PREV: ['⏮', 'Previous track'],
+    C_BRI_UP: ['Bri+', 'Screen brighter'], C_BRI_DN: ['Bri−', 'Screen dimmer'] };
+  // Modifier keys and the functions that wrap a key in one, e.g. LS(N1).
+  var MODS = { LSHFT: 'Shift', RSHFT: 'Shift', LSHIFT: 'Shift', RSHIFT: 'Shift', LCTRL: 'Ctrl', RCTRL: 'Ctrl',
+    LALT: 'Alt', RALT: 'Alt', LGUI: 'GUI', RGUI: 'GUI', LWIN: 'GUI', RWIN: 'GUI', LCMD: 'GUI', RCMD: 'GUI' };
+  var MODFN = { LS: 'Shift', RS: 'Shift', LC: 'Ctrl', RC: 'Ctrl', LA: 'Alt', RA: 'Alt', LG: 'GUI', RG: 'GUI' };
+  var MODSYM = { Shift: '⇧', Ctrl: '⌃', Alt: '⌥', GUI: '◆' };
+  var MOUSE = { LCLK: 'Left click', RCLK: 'Right click', MCLK: 'Middle click', MB4: 'Back button',
+    MB5: 'Forward button', MOVE_UP: 'Pointer up', MOVE_DOWN: 'Pointer down', MOVE_LEFT: 'Pointer left',
+    MOVE_RIGHT: 'Pointer right', SCRL_UP: 'Scroll up', SCRL_DOWN: 'Scroll down', SCRL_LEFT: 'Scroll left',
+    SCRL_RIGHT: 'Scroll right' };
+  var MOUSELABEL = { LCLK: 'LClk', RCLK: 'RClk', MCLK: 'MClk', MB4: 'Back', MB5: 'Fwd', MOVE_UP: '🖱↑',
+    MOVE_DOWN: '🖱↓', MOVE_LEFT: '🖱←', MOVE_RIGHT: '🖱→', SCRL_UP: '⇞', SCRL_DOWN: '⇟', SCRL_LEFT: '⇜',
+    SCRL_RIGHT: '⇝' };
+
+  function val(p) { return p && p.value; }
+
+  // A key code, possibly wrapped in modifier functions: {mods: [...], code}.
+  function parseKey(p) {
+    if (p && MODFN[p.value] && p.params && p.params.length) {
+      var inner = parseKey(p.params[0]);
+      return { mods: [MODFN[p.value]].concat(inner.mods), code: inner.code };
+    }
+    return { mods: [], code: String(val(p)) };
+  }
+
+  function keyChar(k) {
+    var shift = k.mods.filter(function (m) { return m === 'Shift'; }).length;
+    if (k.mods.length !== shift) return null;
+    if (/^[A-Z]$/.test(k.code)) return shift ? k.code : k.code.toLowerCase();
+    if (shift) return SHIFTED[k.code] || null;
+    return CHAR[k.code] || null;
+  }
+
+  function keyName(k, short) {
+    var c = keyChar(k);
+    if (c !== null) return short ? (/^[a-z]$/.test(c) ? c.toUpperCase() : c) : '“' + c + '”';
+    var base = { mods: [], code: k.code };
+    var b = MODS[k.code] ? (short ? MODS[k.code] : (/^R/.test(k.code) ? 'Right ' : 'Left ') + MODS[k.code])
+      : NAMED[k.code] ? NAMED[k.code][short ? 0 : 1]
+      : keyChar(base) !== null ? keyChar(base).toUpperCase()
+      : k.code;
+    var mods = k.mods.filter(function (m, i, a) { return a.indexOf(m) === i; });
+    if (short) return mods.map(function (m) { return MODSYM[m]; }).join('') + b;
+    return mods.concat([b]).join('+');
+  }
+
+  function layerName(layout, n) { return layout.layer_names[n] !== undefined ? layout.layer_names[n] : 'layer ' + n; }
+
+  function find(list, name) {
+    for (var i = 0; i < (list || []).length; i++) if (list[i].name === name) return list[i];
+    return null;
+  }
+
+  // What a binding does, as a tree: key, layer, holdtap, macro, sticky, mouse, special, trans, none.
+  function resolve(layout, b, depth) {
+    depth = (depth || 0) + 1;
+    if (depth > 12) return { kind: 'special', label: '…', words: 'a behaviour nested too deep to show' };
+    var v = b.value, ps = b.params || [];
+    switch (v) {
+      case '&kp': return { kind: 'key', key: parseKey(ps[0]) };
+      case '&trans': return { kind: 'trans' };
+      case '&none': return { kind: 'none' };
+      case '&mo': return { kind: 'layer', how: 'hold', layer: val(ps[0]) };
+      case '&to': return { kind: 'layer', how: 'to', layer: val(ps[0]) };
+      case '&tog': return { kind: 'layer', how: 'toggle', layer: val(ps[0]) };
+      case '&layer': return { kind: 'layer', how: 'dance', layer: val(ps[0]) };
+      case '&sk': return { kind: 'sticky', key: parseKey(ps[0]) };
+      case '&caps_word': return { kind: 'special', label: 'CapsW', words: 'Caps Word: types the next word in capitals' };
+      case '&key_repeat': return { kind: 'special', label: 'Rpt', words: 'repeats the last key' };
+      case '&magic': return { kind: 'holdtap',
+        hold: { kind: 'layer', how: 'hold', layer: layout.layer_names.indexOf('Magic') },
+        tap: { kind: 'special', label: '✦', words: 'shows the status lights' } };
+      case '&bootloader': return { kind: 'special', danger: true, label: 'Boot',
+        words: 'Bootloader: this half stops being a keyboard and waits for new firmware' };
+      case '&reset': case '&sys_reset': return { kind: 'special', danger: true, label: 'Reset', words: 'Reset: restarts this half' };
+      case '&bt': return bt(val(ps[0]), val(ps[1]));
+      case '&out': return { kind: 'special', label: val(ps[0]) === 'OUT_USB' ? 'USB' : val(ps[0]) === 'OUT_BLE' ? 'BLE' : 'Out',
+        words: val(ps[0]) === 'OUT_USB' ? 'sends keys over USB' : val(ps[0]) === 'OUT_BLE' ? 'sends keys over Bluetooth' : 'toggles USB or Bluetooth output' };
+      case '&rgb_ug': return { kind: 'special', label: String(val(ps[0])).replace(/^RGB_/, ''), words: 'lights: ' + rgb(val(ps[0])) };
+      case '&mkp': case '&mmv': case '&msc':
+        return { kind: 'mouse', label: MOUSELABEL[val(ps[0])] || val(ps[0]), words: MOUSE[val(ps[0])] || String(val(ps[0])) };
+    }
+    var m = /^&bt_(\d+)$/.exec(v);
+    if (m) return bt('BT_SEL', Number(m[1]));
+    var ht = find(layout.holdTaps, v);
+    if (ht) return {
+      kind: 'holdtap',
+      hold: resolve(layout, { value: ht.bindings[0], params: ps[0] !== undefined ? [ps[0]] : [] }, depth),
+      tap: resolve(layout, { value: ht.bindings[1], params: ps[1] !== undefined ? [ps[1]] : [] }, depth)
+    };
+    var mac = find(layout.macros, v);
+    if (mac) return macro(layout, mac, ps, depth);
+    return { kind: 'special', label: v.replace(/^&/, ''), words: 'behaviour ' + v };
+  }
+
+  function bt(cmd, n) {
+    if (cmd === 'BT_CLR') return { kind: 'special', danger: true, label: 'BT Clr', words: 'clears the pairing of the current Bluetooth profile' };
+    if (cmd === 'BT_CLR_ALL') return { kind: 'special', danger: true, label: 'BT Clr*', words: 'clears every Bluetooth pairing' };
+    if (cmd === 'BT_SEL') return { kind: 'special', label: 'BT' + n, words: 'switches to Bluetooth profile ' + n };
+    if (cmd === 'BT_NXT') return { kind: 'special', label: 'BT→', words: 'next Bluetooth profile' };
+    if (cmd === 'BT_PRV') return { kind: 'special', label: 'BT←', words: 'previous Bluetooth profile' };
+    return { kind: 'special', label: 'BT', words: 'Bluetooth: ' + cmd };
+  }
+
+  function rgb(c) {
+    var w = { RGB_TOG: 'on or off', RGB_BRI: 'brighter', RGB_BRD: 'dimmer', RGB_HUI: 'next hue', RGB_HUD: 'previous hue',
+      RGB_SAI: 'more saturated', RGB_SAD: 'less saturated', RGB_SPI: 'faster effect', RGB_SPD: 'slower effect',
+      RGB_EFF: 'next effect', RGB_EFR: 'previous effect' };
+    return w[c] || String(c);
+  }
+
+  // Walk a macro's bindings: what it holds while the key is down, and what it types.
+  function macro(layout, mac, ps, depth) {
+    var mode = 'tap', subs = [], pressed = [], held = null, steps = [], letsGo = false;
+    mac.bindings.forEach(function (b) {
+      var pm = /^&macro_param_(\d)to(\d)$/.exec(b.value);
+      if (pm) { subs.push([pm[1] - 1, pm[2] - 1]); return; }
+      if (b.value === '&macro_tap') { mode = 'tap'; return; }
+      if (b.value === '&macro_press') { mode = 'press'; return; }
+      if (b.value === '&macro_release') { mode = 'release'; return; }
+      if (b.value === '&macro_pause_for_release') { held = pressed.slice(); return; }
+      if (/^&macro_/.test(b.value)) return;
+      var params = (b.params || []).slice();
+      subs.forEach(function (s) { if (ps[s[0]] !== undefined) params[s[1]] = ps[s[0]]; });
+      subs = [];
+      if (held) return;
+      var d = resolve(layout, { value: b.value, params: params }, depth);
+      var key = JSON.stringify(d);
+      if (mode === 'press') pressed.push(d);
+      else if (mode === 'release') {
+        var i = pressed.map(JSON.stringify).indexOf(key);
+        if (i >= 0) pressed.splice(i, 1);
+        else letsGo = true;
+      } else {
+        var mods = [];
+        pressed.forEach(function (p) { if (p.kind === 'key' && MODS[p.key.code]) mods.push(MODS[p.key.code]); });
+        if (d.kind === 'key' && mods.length) d = { kind: 'key', key: { mods: mods.concat(d.key.mods), code: d.key.code } };
+        steps.push(d);
+      }
+    });
+    held = held || [];
+    if (!letsGo && !steps.length && held.length === 1) return held[0];
+    if (!letsGo && !held.length && steps.length === 1) return steps[0];
+    return { kind: 'macro', held: held, steps: steps, letsGo: letsGo };
+  }
+
+  function label(layout, d) {
+    switch (d.kind) {
+      case 'key': return keyName(d.key, true);
+      case 'sticky': return '1×' + keyName(d.key, true);
+      case 'layer': return (d.how === 'to' ? '→' : d.how === 'toggle' ? '⇄' : '') + layerName(layout, d.layer);
+      case 'holdtap': return label(layout, d.tap);
+      case 'macro':
+        if (d.steps.length) return d.steps.map(function (s) { return label(layout, s); }).join('');
+        return d.held.map(function (s) { return label(layout, s); }).join('+');
+      case 'none': return '';
+      case 'trans': return '▽';
+      default: return d.label;
+    }
+  }
+
+  // What a hold does, as a short label: a modifier's name, a layer's name.
+  function holdLabel(layout, d) {
+    if (d.kind === 'key' && MODS[d.key.code] && !d.key.mods.length) return MODS[d.key.code];
+    if (d.kind === 'layer') return layerName(layout, d.layer);
+    if (d.kind === 'macro' && !d.steps.length) {
+      var ks = d.held.filter(function (h) { return h.kind === 'key'; });
+      return (ks.length ? ks : d.held).map(function (h) { return holdLabel(layout, h); }).join('+');
+    }
+    return label(layout, d);
+  }
+
+  function words(layout, d) {
+    switch (d.kind) {
+      case 'key': return keyChar(d.key) !== null ? 'types ' + keyName(d.key) : keyName(d.key);
+      case 'sticky': return 'sticky ' + keyName(d.key) + ': applies to the next key you press';
+      case 'layer':
+        var n = layerName(layout, d.layer);
+        if (d.how === 'hold') return n + ' layer while held';
+        if (d.how === 'to') return 'switches the board to ' + n + ' (it stays there)';
+        if (d.how === 'toggle') return 'turns ' + n + ' on or off';
+        return 'hold: ' + n + ' layer while held; tap twice: switch to ' + n;
+      case 'holdtap': return 'Tap: ' + words(layout, d.tap) + '. Hold: ' + holdWords(layout, d.hold) + '.';
+      case 'macro':
+        var parts = [];
+        if (d.letsGo) parts.push('lets go of held modifiers');
+        if (d.steps.length) parts.push((d.steps.every(printing) ? 'types ' : 'presses ') +
+          d.steps.map(function (s) { return words(layout, s).replace(/^types /, ''); }).join(', then '));
+        if (d.held.length) parts.push('holds ' + d.held.map(function (h) { return holdWords(layout, h); }).join(' and ') + ' until released');
+        return parts.join('; ') || 'nothing';
+      case 'none': return 'nothing';
+      case 'trans': return 'pass-through';
+      default: return d.words;
+    }
+  }
+
+  function holdWords(layout, d) {
+    if (d.kind === 'key' && MODS[d.key.code] && !d.key.mods.length) return keyName(d.key);
+    if (d.kind === 'macro' && !d.steps.length && !d.letsGo)
+      return d.held.map(function (h) { return holdWords(layout, h); }).join(' and ');
+    return words(layout, d);
+  }
+
+  function printing(d) { return d.kind === 'key' && keyChar(d.key) !== null; }
+
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function danger(d) {
+    return !!(d.danger || (d.kind === 'holdtap' && (danger(d.tap) || danger(d.hold))));
+  }
+
+  // Layers a binding turns on while it is held.
+  function holdsLayers(d) {
+    if (d.kind === 'layer' && (d.how === 'hold' || d.how === 'dance')) return [d.layer];
+    if (d.kind === 'holdtap') return holdsLayers(d.hold);
+    if (d.kind === 'macro') return [].concat.apply([], d.held.map(holdsLayers));
+    return [];
+  }
+
+  // The layer a pass-through key on layer n falls to: the lowest layer below n holding a key
+  // that turns n on while held. With none (reached by a switch, or the base itself), the base layer.
+  function below(layout, n) {
+    for (var i = 0; i < n; i++) {
+      for (var p = 0; p < layout.layers[i].length; p++) {
+        if (holdsLayers(resolve(layout, layout.layers[i][p])).indexOf(n) >= 0) return i;
+      }
+    }
+    return n > 0 ? 0 : null;
+  }
+
+  // What key `pos` does on layer `n`: labels for the picture, plain words, and for a
+  // pass-through key the layer it falls through to.
+  function key(layout, n, pos) {
+    var d = resolve(layout, layout.layers[n][pos]);
+    if (d.kind === 'trans') {
+      var to = below(layout, n);
+      if (to === null) return { kind: 'trans', tap: '▽', hold: null, words: 'pass-through, to nothing', through: null, danger: false };
+      var k = key(layout, to, pos);
+      return { kind: 'trans', tap: k.tap, hold: k.hold, danger: k.danger,
+        through: k.through || layerName(layout, to),
+        words: 'Pass-through: does what ' + (k.through || layerName(layout, to)) + ' does here. ' + cap(k.words) };
+    }
+    var w = words(layout, d);
+    return {
+      kind: d.kind,
+      tap: label(layout, d),
+      hold: d.kind === 'holdtap' ? holdLabel(layout, d.hold) : null,
+      words: /\.$/.test(w) ? w : cap(w) + '.',
+      through: null,
+      danger: danger(d)
+    };
+  }
+
+  function layers(layout) {
+    return layout.layer_names.map(function (name, index) { return { index: index, name: name }; });
+  }
+
+  return { layers: layers, key: key, resolve: resolve };
+})();
+if (typeof module !== 'undefined') module.exports = Reach;
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var layout = JSON.parse(document.getElementById('data-layout').textContent);
+  var keys = JSON.parse(document.getElementById('data-keys').textContent);
+  var U = 54, GAP = 4, NS = 'http://www.w3.org/2000/svg';
+  var state = { layer: 0, pos: null };
+
+  document.getElementById('title').textContent = layout.title || '';
+
+  var nav = document.getElementById('layers');
+  Reach.layers(layout).forEach(function (l) {
+    var b = document.createElement('button');
+    b.textContent = l.name;
+    b.onclick = function () { state.layer = l.index; draw(); };
+    nav.appendChild(b);
+  });
+
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var a in attrs) e.setAttribute(a, attrs[a]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  function fit(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+  var svg = document.getElementById('board');
+  var maxX = 0, maxY = 0;
+  keys.forEach(function (k) { maxX = Math.max(maxX, k.x + 1); maxY = Math.max(maxY, k.y + 1.4); });
+  svg.setAttribute('viewBox', [-GAP, -GAP, maxX * U + 2 * GAP, maxY * U + 2 * GAP].join(' '));
+
+  function draw() {
+    Array.prototype.forEach.call(nav.children, function (b, i) { b.setAttribute('aria-pressed', i === state.layer); });
+    svg.textContent = '';
+    keys.forEach(function (k, pos) {
+      var r = Reach.key(layout, state.layer, pos);
+      var g = el('g', { 'class': 'k ' + r.kind + (r.danger ? ' danger' : '') + (pos === state.pos ? ' sel' : ''),
+        transform: k.r ? 'rotate(' + k.r + ' ' + k.rx * U + ' ' + k.ry * U + ')' : '' }, svg);
+      g.onclick = function () { state.pos = pos; draw(); };
+      el('title', {}, g).textContent = r.words;
+      var x = k.x * U, y = k.y * U, w = (k.w || 1) * U - GAP, h = (k.h || 1) * U - GAP;
+      el('rect', { x: x, y: y, width: w, height: h, rx: 6 }, g);
+      var tap = fit(r.tap, 7);
+      var t = el('text', { 'class': 'tap', x: x + w / 2, y: y + (r.hold ? h * 0.38 : h / 2),
+        'font-size': tap.length > 4 ? 10 : tap.length > 2 ? 13 : 17 }, g);
+      t.textContent = tap;
+      if (r.hold) el('text', { 'class': 'hold', x: x + w / 2, y: y + h * 0.78 }, g).textContent = fit(r.hold, 9);
+    });
+    info();
+  }
+
+  function info() {
+    var box = document.getElementById('info');
+    if (state.pos === null) { box.textContent = 'Select a key.'; return; }
+    var r = Reach.key(layout, state.layer, state.pos);
+    box.textContent = '';
+    var where = document.createElement('div');
+    where.className = 'where';
+    where.textContent = layout.layer_names[state.layer] + ' · ' + (keys[state.pos].label || 'key ' + state.pos);
+    var what = document.createElement('div');
+    what.textContent = r.words;
+    box.appendChild(where);
+    box.appendChild(what);
+    if (r.danger) {
+      var d = document.createElement('div');
+      d.className = 'danger';
+      d.textContent = 'Careful: this key reboots, unpairs or reflashes the board.';
+      box.appendChild(d);
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var n = layout.layer_names.length;
+    if (e.key === 'ArrowRight') state.layer = (state.layer + 1) % n;
+    else if (e.key === 'ArrowLeft') state.layer = (state.layer + n - 1) % n;
+    else return;
+    e.preventDefault();
+    draw();
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>
