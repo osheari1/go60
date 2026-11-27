@@ -7,6 +7,7 @@ Job: hold my Go60 Layout and the tools that build and flash it. Read README.md a
 - Change keys by editing `config/go60.json`, then `bin/go60-gen < config/go60.json > config/go60.keymap`. Never edit the Keymap by hand.
 - Kconfig goes in `config/go60.conf`.
 - Run `tests/run` before every commit. It must print `all passed`.
+  - Docs-only commit: every path in `git diff --cached --name-only` ends in `.md`. Skip `tests/run`.
 - `go60-gen` fails on a Layout feature it does not know: extend it, with a golden pair from the editor's own export.
 - Do not run `go60-flash`: it needs a human at the keyboard.
 - Branch work: follow "Branch work" in `~/rs/home/CLAUDE.md`. Worktrees go under `.worktrees/` (gitignored).
