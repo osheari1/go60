@@ -12,8 +12,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: moergo-sc/zmk
-          ref: main
+          # Pinned firmware: an upgrade is a deliberate commit here.
+          ref: v26.09
           path: src
+      - name: Tests (golden Keymap, stale Keymap, import, flash)
+        run: tests/run
       - uses: cachix/install-nix-action@v25
         with:
           nix_path: nixpkgs=channel:nixos-22.05

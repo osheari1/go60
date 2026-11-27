@@ -1,37 +1,42 @@
-# MoErgo Go60 Custom Configuration for ZMK
+# go60
 
-![MoErgo Logo](moergo_logo.png)
+Keymap and firmware tools for my MoErgo Go60 (ZMK, MoErgo fork).
+Started from [go60-zmk-config](https://github.com/moergo-keyboards/go60-zmk-config). Words: [GLOSSARY.md](GLOSSARY.md).
 
-This repo is the official ZMK configuration of the MoErgo Go60 wireless split keyboard. Use it to develop your own keymap and easily build your own ZMK firmware to run on your Go60.
+## How it fits
 
-**NOTE: You can also customize the layout of your Go60 keyboard with the Go60 Layout Editor webapp. For most users Go60 Layout Editor is the recommended and simpler option. More information is available at the official MoErgo Go60 Support site (see resources below).**
+```
+Layout Editor ──export──▶ go60-import ──▶ config/go60.json   (Layout: source of truth)
+agent edits ─────────────────────────────▶      │
+                                                 ▼ go60-gen
+                                          config/go60.keymap (Keymap: generated)
+                                                 │ push
+                                                 ▼ CI (.github/workflows/build.yml)
+                                          go60.uf2 ──▶ go60-flash ──▶ right half, left half
+```
 
-These steps will get you using your keymap on your keyboard in the fastest time possible. It uses the GitHub Actions feature to build your firmware online.
+- The Layout is the source of truth. Why: [ADR 0001](docs/adr/0001-layout-json-is-source-of-truth.md).
+- Never edit `config/go60.keymap` by hand. CI fails if it is stale.
+- Kconfig lives in `config/go60.conf`, not in the Layout.
+- Firmware is pinned to `moergo-sc/zmk` `v26.09` in `build.yml`.
 
-If you are looking to dig deeper into ZMK and develop new functionality, it is recommended to follow the steps of installing ZMK as found on the official ZMK documentation site (linked below).
+## Tools
 
-## Resources
-- The [official MoErgo Go60 Support](https://moergo.com/go60-support) web site. Go60 documentation and other technical resources.
-- The [official MoErgo Discord Server](https://moergo.com/discord). Instant conversations with other Go60 users.
+| Want | Command |
+|---|---|
+| Edit visually | Import `config/go60.json` in the Layout Editor (Settings → Local Backup and Restore) |
+| Bring an editor export in | `go60-import <export.json> [<export.keymap>]` |
+| Regenerate the Keymap after editing the Layout | `bin/go60-gen < config/go60.json > config/go60.keymap` |
+| Flash HEAD's CI build | `go60-flash` |
+| Flash a local file | `go60-flash <file.uf2>` |
+| Run the suite | `tests/run` |
 
-- The [official ZMK Documentation](https://zmk.dev/docs) web site. Find the answers to many of your questions about ZMK Firmware.
-- The [official ZMK Discord Server](https://discord.gg/8cfMkQksSB). Instant conversations with other ZMK developers and users. Great technical resource!
+- Give `go60-import` the editor's `.keymap` too: it then proves `go60-gen` matches the editor.
+  A mismatch saves the pair as a new golden test in `tests/golden/`.
+- `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
+- Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
 
-- The [official MoErgo ZMK Distribution](https://github.com/moergo-sc/zmk). Repository for ZMK firmware customized for Go60 and Glove80.
+## Not here
 
-## Instructions
-1. Log into, or sign up for, your personal GitHub account.
-2. Create your own repository using this repository as a template ([instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template)) and check it out on your local computer.
-3. Edit the keymap file(s) to suit your needs
-4. Commit and push your changes to your personal repo. Upon pushing it, GitHub Actions will start building a new version of your firmware with the updated keymap.
-
-## Firmware Files
-To locate your firmware files and reflash your Go60...
-1. log into GitHub and navigate to your personal config repository you just uploaded your keymap changes to.
-2. Click "Actions" in the main navigation, and in the left navigation click the "Build" link.
-3. Select the desired workflow run in the centre area of the page (based on date and time of the build you wish to use). You can also start a new build from this page by clicking the "Run workflow" button.
-4. After clicking the desired workflow run, you should be presented with a section at the bottom of the page called "Artifacts". This section contains the results of your build, in a file called "go60.uf2"
-5. Download the go60.uf2
-6. Flash the firmware to Go60 according to the user documentation on the official Go60 Support website (linked above)
-
-Your keyboard is now ready to use.
+- Factory reset and re-pair: do it by hand after a firmware version change. [Go60 guide](https://docs.moergo.com/go60-user-guide/customizing-key-layout/).
+- Home-row-mod tuning: later.
