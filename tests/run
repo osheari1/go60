@@ -61,6 +61,97 @@ check "go60-import: mismatching editor Keymap fails and saves a golden pair" \
 check "go60-import: refuses outside a go60 checkout" \
   '! (cd "$T" && "$ROOT/bin/go60-import" "$G/layout.json" >/dev/null 2>&1)'
 
+# --- go60-train -----------------------------------------------------------
+
+page="$T/trainer.html"
+"$ROOT/bin/go60-train" < "$ROOT/config/go60.json" > "$page" 2>"$T/train.err"; train_rc=$?
+reach() { node "$ROOT/tests/page.js" "$page" "$1"; }
+
+check "go60-train: builds a page from the repo's Layout" '[[ $train_rc == 0 && -s "$page" && ! -s "$T/train.err" ]]'
+
+check "go60-train: page carries the Layout" \
+  'diff -q <(reach layout | jq -S .) <(jq -S . "$ROOT/config/go60.json") >/dev/null'
+
+check "go60-train: page carries the board's key positions" \
+  'diff -q <(reach keys | jq -S .) <(jq -S .layouts.LAYOUT.layout "$ROOT/config/info.json") >/dev/null'
+
+check "go60-train: page loads nothing from the network" \
+  '! grep -Eq "(src|href)=\"?(https?:)?//|url\\((https?:)?//|@import|fetch\\(" "$page"'
+
+check "go60-train: refuses non-JSON, with a message and no page" \
+  '! echo nope | "$ROOT/bin/go60-train" >"$T/bad.out" 2>"$T/bad.err" && [[ ! -s "$T/bad.out" ]] && grep -q "go60-train:" "$T/bad.err"'
+
+check "go60-train: refuses a non-go60 Layout" \
+  '! echo "{\"keyboard\":\"glove80\"}" | "$ROOT/bin/go60-train" >/dev/null 2>&1'
+
+check "go60-train: refuses a layer with the wrong number of keys" \
+  '! jq ".layers[3] |= .[1:]" "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" >/dev/null 2>&1'
+
+printf '#!/bin/sh\necho "$1" > "%s"\n' "$T/opened" > "$T/browser"; chmod +x "$T/browser"
+check "go60-train --open: writes the page under the cache directory and opens it, from any directory" \
+  '(cd "$T" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache" BROWSER="$T/browser %s" "$ROOT/bin/go60-train" --open >/dev/null 2>&1) \
+   && [[ "$(cat "$T/opened")" == "file://$T/cache/go60/trainer.html" ]] \
+   && cmp -s "$T/cache/go60/trainer.html" "$page"'
+
+# Installed by cfg: <prefix>/lib/go60/{bin,lib,config/info.json}, a bin symlink, no Layout.
+inst="$T/inst"; mkdir -p "$inst/lib/go60/bin" "$inst/lib/go60/lib" "$inst/lib/go60/config" "$inst/bin" "$T/elsewhere"
+cp "$ROOT/bin/go60-train" "$inst/lib/go60/bin/"; cp "$ROOT/lib/trainer.html" "$inst/lib/go60/lib/"
+cp "$ROOT/config/info.json" "$inst/lib/go60/config/"; ln -s ../lib/go60/bin/go60-train "$inst/bin/go60-train"
+rm -f "$T/opened"
+check "go60-train --open: installed, finds the Layout in GO60_REPO from an unrelated directory" \
+  '(cd "$T/elsewhere" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache2" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/inst.err") \
+   && [[ "$(cat "$T/opened")" == "file://$T/cache2/go60/trainer.html" ]] \
+   && cmp -s "$T/cache2/go60/trainer.html" "$page" || { cat "$T/inst.err" >&2; false; }'
+
+check "go60-train --open: installed, prefers the git checkout it runs in" \
+  '(cd "$repo/config" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache3" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>&1) \
+   && diff -q <(page="$T/cache3/go60/trainer.html" reach layout | jq -S .) <(jq -S . "$repo/config/go60.json") >/dev/null'
+
+check "go60-train --open: no Layout anywhere says so, without a traceback" \
+  '! (cd "$T/elsewhere" && GO60_REPO="$T/nowhere" XDG_CACHE_HOME="$T/cache4" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/none.err") \
+   && grep -q "^go60-train: .*go60.json" "$T/none.err" && ! grep -q Traceback "$T/none.err" && [[ ! -e "$T/cache4" ]]'
+
+# Each way the input can be unreadable gives a go60-train: message, no traceback and no page.
+nomsg() { grep -q "^go60-train: " "$1" && ! grep -q Traceback "$1"; }
+jq '.title = "BAD"' "$ROOT/config/go60.json" | sed 's/"BAD"/"\xff"/' > "$T/latin1.json"
+check "go60-train: refuses non-UTF-8 input, with a message and no page" \
+  '! "$ROOT/bin/go60-train" < "$T/latin1.json" >"$T/u8.out" 2>"$T/u8.err" && [[ ! -s "$T/u8.out" ]] && nomsg "$T/u8.err" && grep -q UTF-8 "$T/u8.err"'
+
+unr="$T/unreadable"; mkdir -p "$unr/config"; cp "$ROOT/config/go60.json" "$unr/config/"; chmod 000 "$unr/config/go60.json"
+check "go60-train --open: an unreadable Layout says so, without a traceback" \
+  '! (cd "$T/elsewhere" && GO60_REPO="$unr" XDG_CACHE_HOME="$T/cache5" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/unr.err") \
+   && nomsg "$T/unr.err" && [[ ! -e "$T/cache5/go60/trainer.html" ]]'
+chmod 644 "$unr/config/go60.json"
+
+noinfo="$T/noinfo"; mkdir -p "$noinfo/bin" "$noinfo/lib" "$noinfo/config"
+cp "$ROOT/bin/go60-train" "$noinfo/bin/"; cp "$ROOT/lib/trainer.html" "$noinfo/lib/"
+check "go60-train: a missing info.json says so, without a traceback" \
+  '! "$noinfo/bin/go60-train" < "$ROOT/config/go60.json" >"$T/ni.out" 2>"$T/ni.err" && [[ ! -s "$T/ni.out" ]] && nomsg "$T/ni.err"'
+echo '{"layouts":' > "$noinfo/config/info.json"
+check "go60-train: a bad info.json says so, without a traceback" \
+  '! "$noinfo/bin/go60-train" < "$ROOT/config/go60.json" >"$T/bi.out" 2>"$T/bi.err" && [[ ! -s "$T/bi.out" ]] && nomsg "$T/bi.err"'
+
+renamed="$T/renamed.html"
+jq '.layer_names[-1] = "Sparkle"' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$renamed"
+check "Reach: the magic key finds its layer when that layer is renamed" \
+  '[[ "$(page="$renamed" reach "Reach.key(layout, 0, 36).hold")" == "\"Sparkle\"" ]]'
+
+check "Reach: every layer of the Layout can be picked" \
+  '[[ "$(reach "Reach.layers(layout).map(l => l.name)")" == "$(jq -c .layer_names "$ROOT/config/go60.json")" ]]'
+
+check "Reach: a home-row hold-tap shows its tap and its hold" \
+  '[[ "$(reach "(k => [k.tap, k.hold])(Reach.key(layout, 0, 25))")" == "[\"N\",\"GUI\"]" ]]'
+
+check "Reach: a thumb hold-tap says in words what it sends" \
+  'reach "Reach.key(layout, 0, 54).words" | grep -q "Tap: Backspace. Hold: Cursor layer while held"'
+
+check "Reach: a shifted key shows the character it types" \
+  '[[ "$(reach "Reach.key(layout, 13, 2).tap")" == "\"(\"" ]]'
+
+check "Reach: a pass-through key shows what it falls through to" \
+  '[[ "$(reach "(k => [k.through, k.tap])(Reach.key(layout, 15, 16))")" == "[\"Mouse\",\"$(reach "Reach.key(layout, 14, 16).tap" | jq -r .)\"]" ]] \
+   && [[ "$(reach "Reach.key(layout, 12, 50).through")" == "\"HRM_WinLinx\"" ]]'
+
 # --- go60-flash -----------------------------------------------------------
 
 # Stubs: findmnt knows nothing; udisksctl "mounts" DEV_DIR/<label> at MNT_DIR/<label>.
@@ -125,6 +216,24 @@ check "go60-flash: CI image flashes, exits 0 and removes its download" \
 
 check "go60-flash: refuses a non-.uf2 file" \
   '! "$ROOT/bin/go60-flash" "$ROOT/README.md" >/dev/null 2>&1'
+
+# --- .sandcastle/tracker --------------------------------------------------
+
+k="$T/tracker"; mkdir -p "$k/.scratch/f/issues"
+printf '# 01: a\n\n**Status:** ready-for-agent\n\n- [ ] x\n' > "$k/.scratch/f/issues/01-a.md"
+printf '# 02: b\n\n**Blocked by:** 01\n\n**Status:** ready-for-agent\n' > "$k/.scratch/f/issues/02-b.md"
+git -C "$k" init -q && git -C "$k" add . && git -C "$k" -c user.name=t -c user.email=t@t commit -qm init
+trk() { (cd "$k" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t "$ROOT/.sandcastle/tracker" "$@"); }
+check "tracker: list skips blocked tickets" \
+  '[[ "$(trk list | jq -r "map(.id)|join(\",\")")" == ".scratch/f/issues/01-a.md" ]]'
+check "tracker: close resolves, comments and commits" \
+  'trk close .scratch/f/issues/01-a.md done && grep -q "^\*\*Status:\*\* resolved$" "$k/.scratch/f/issues/01-a.md" \
+   && grep -q "Closed by RALPH: done" "$k/.scratch/f/issues/01-a.md" && [[ -z "$(git -C "$k" status --porcelain)" ]]'
+check "tracker: close keeps the blank line after Status" \
+  '[[ -z "$(sed -n "/Status/{n;p;}" "$k/.scratch/f/issues/01-a.md")" ]]'
+check "tracker: closing 01 unblocks 02" \
+  '[[ "$(trk list | jq -r "map(.id)|join(\",\")")" == ".scratch/f/issues/02-b.md" ]]'
+check "tracker: refuses an unknown ticket" '! trk view nope 2>/dev/null'
 
 wait
 if ((FAILS)); then printf '%d failed\n' "$FAILS"; exit 1; fi

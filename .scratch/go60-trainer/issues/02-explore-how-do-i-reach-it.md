@@ -12,6 +12,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [ ] It resolves thumb layer holds, home-row mods, shifted keys, combos and pass-through keys.
 - [ ] It reads the structure of hold-taps and macros; it does not match on their names.
 - [ ] It loads under Node with no browser.
+- [ ] A pass-through key falls to the next lower *active* layer, as ZMK resolves it, not to the lowest layer that holds this one. Today `below()` in `lib/trainer.html` picks the lowest. Suite check: a layer reachable from two layers shows the right fall-through for each route.
 - [ ] Each layer shows how to reach it: which key to hold, or which key toggles it.
 - [ ] Combos are drawn as linked keys with their result.
 - [ ] Search by character or key name lights the path on the picture.

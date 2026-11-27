@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""go60-train: Layout (Layout Editor JSON) on stdin -> Trainer page (one HTML file) on stdout.
+
+go60-train --open: build the page from the Layout (this git checkout's, else $GO60_REPO's), write it under the user
+cache directory and open it in the default browser.
+
+The page is lib/trainer.html with two JSON blobs filled in: the Layout, and the
+key positions from the board's layout description (config/info.json). Nothing else.
+Exit 1 with a message on stderr when the Layout cannot be read; no page is written.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import webbrowser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TMPL = ROOT / "lib" / "trainer.html"
+INFO = ROOT / "config" / "info.json"
+
+def layout_path():
+    # The git checkout of the current directory if it holds a Layout, else GO60_REPO (default ~/rs/go60).
+    try:
+        git = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    except OSError:
+        git = None
+    tried = []
+    if git and git.returncode == 0:
+        tried.append(Path(git.stdout.strip()) / "config" / "go60.json")
+    tried.append(Path(os.environ.get("GO60_REPO") or Path.home() / "rs" / "go60") / "config" / "go60.json")
+    for p in tried:
+        if p.is_file():
+            return p
+    die("no Layout found; looked for " + " and ".join(map(str, tried)) + " (set GO60_REPO to your go60 checkout)")
+
+
+def die(msg):
+    sys.exit(f"go60-train: {msg}")
+
+
+def read(path, what):
+    # A file's text, or a go60-train: message naming what it is and why it cannot be read.
+    try:
+        return utf8(path.read_bytes(), f"{what} {path}")
+    except OSError as e:
+        die(f"cannot read {what} {path}: {e.strerror}")
+
+
+def utf8(data, what):
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        die(f"{what} is not UTF-8: byte {e.start}")
+
+
+def board_keys():
+    # The key positions from the board's layout description.
+    text = read(INFO, "layout description")
+    try:
+        keys = json.loads(text)["layouts"]["LAYOUT"]["layout"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        die(f"layout description {INFO} has no layouts.LAYOUT.layout: {e}")
+    if not isinstance(keys, list) or not keys:
+        die(f"layout description {INFO}: layouts.LAYOUT.layout is not a list of keys")
+    return keys
+
+
+def blob(v):
+    # Safe inside <script>: JSON allows "\/", and it stops "</script>" in a string closing the tag.
+    return json.dumps(v, ensure_ascii=False).replace("</", "<\\/")
+
+
+def page(text):
+    try:
+        layout = json.loads(text)
+    except json.JSONDecodeError as e:
+        die(f"Layout is not JSON: {e}")
+    if not isinstance(layout, dict) or layout.get("keyboard") != "go60":
+        die(f"keyboard is {layout.get('keyboard') if isinstance(layout, dict) else None!r}, want 'go60'")
+    keys = board_keys()
+    names, layers = layout.get("layer_names"), layout.get("layers")
+    if not isinstance(names, list) or not isinstance(layers, list) or len(names) != len(layers) or not layers:
+        die("Layout needs layer_names and layers of the same, non-zero length")
+    for name, keys_on in zip(names, layers):
+        if not isinstance(keys_on, list) or len(keys_on) != len(keys):
+            die(f"layer {name}: {len(keys_on) if isinstance(keys_on, list) else 'no'} keys, want {len(keys)}")
+    blobs = {"layout": blob(layout), "keys": blob(keys)}
+    return re.sub(r"\{\{(layout|keys)\}\}", lambda m: blobs[m.group(1)], read(TMPL, "page template"))
+
+
+def main():
+    args = sys.argv[1:]
+    if args == ["--open"]:
+        out = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "go60" / "trainer.html"
+        html = page(read(layout_path(), "Layout"))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html)
+        if not webbrowser.open(out.as_uri()):
+            die(f"could not open a browser; the page is at {out}")
+        print(out)
+    elif not args:
+        sys.stdout.write(page(utf8(sys.stdin.buffer.read(), "Layout")))
+    else:
+        die("usage: go60-train < Layout.json > trainer.html | go60-train --open")
+
+
+if __name__ == "__main__":
+    main()

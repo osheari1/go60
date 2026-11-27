@@ -29,10 +29,16 @@ agent edits ──────────────────────�
 | Regenerate the Keymap after editing the Layout | `bin/go60-gen < config/go60.json > config/go60.keymap` |
 | Flash HEAD's CI build | `go60-flash` |
 | Flash a local file | `go60-flash <file.uf2>` |
+| See any layer, and what each key sends (the Trainer) | `go60-train --open` |
 | Run the suite | `tests/run` |
 
 - Give `go60-import` the editor's `.keymap` too: it then proves `go60-gen` matches the editor.
   A mismatch saves the pair as a new golden test in `tests/golden/`.
+- `go60-train`, the Trainer:
+  - `go60-train < Layout.json > trainer.html`: one offline HTML page from a Layout on stdin.
+  - `--open` finds the Layout in the git checkout you are in, else in `${GO60_REPO:-~/rs/go60}`.
+  - `--open` writes the page to `${XDG_CACHE_HOME:-~/.cache}/go60/trainer.html` and opens the browser.
+  - Key positions come from `config/info.json`, the board's own description.
 - `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
 - Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
 
