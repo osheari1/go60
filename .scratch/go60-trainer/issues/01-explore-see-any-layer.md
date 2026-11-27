@@ -6,7 +6,8 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** None (can start immediately)
 
-**Status:** resolved
+**Status:** ready-for-agent
+
 - [ ] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
 - [ ] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
 - [ ] Unreadable input exits non-zero with a clear message on stderr and writes no page.
@@ -30,3 +31,8 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - Red first: add a suite check that copies `bin/go60-train`, `lib/trainer.html` and `config/info.json` into a temp root with no Layout, symlinks it from a temp bin, and runs `--open` from an unrelated temp dir (browser stubbed). Commit nothing until you have seen it fail for the right reason. Then make it pass, and add a check for the missing-Layout message.
 
 - Closed by RALPH: go60-train --open now finds the Layout in the cwd's git checkout, else ${GO60_REPO:-~/rs/go60}; no Layout gives a go60-train: message, no traceback. Suite checks a fake cfg install (symlinked, no Layout) run from an unrelated dir, seen red first. Still needs a human: merge, tag go60, bump cfg component.
+- Reopened again (operator, 2026-11-27), from code review:
+  - "Unreadable input exits non-zero with a clear message" is not met everywhere. Non-UTF-8 stdin, an unreadable Layout under `--open`, and a missing or bad `config/info.json` each give a raw traceback. Each must give a `go60-train: ...` message. Red first: one suite check per case.
+  - "none is hard-coded by name or count" is broken: `lib/trainer.html` finds `&magic`'s layer with `layout.layer_names.indexOf('Magic')`. Find it from the Layout's structure. Red first: a check with that layer renamed.
+  - README's `go60-train` bullet is one long line. Split into short sub-bullets: stdin/stdout, where `--open` finds the Layout, where it writes.
+  - Tick every box above that the code meets.

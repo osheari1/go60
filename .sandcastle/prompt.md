@@ -27,17 +27,18 @@ Pick the highest-priority open issue that is not blocked by another open issue.
 
 ## Workflow
 
-1. **Explore** — read the issue carefully. Pull in the parent PRD if referenced. Read the relevant source files and tests before writing any code.
+1. **Explore** — read the issue carefully. Read the parent spec (`../spec.md`) if referenced. Read the relevant source files and tests before writing any code.
 2. **Plan** — decide what to change and why. Keep the change as small as possible.
 3. **Execute** — use RGR (Red → Green → Repeat → Refactor): write a failing test first, then write the implementation to pass it.
 4. **Verify** — run `tests/run` before committing. Fix any failures before proceeding.
 5. **Commit** — make a single git commit. The message MUST:
    - Start with `RALPH:` prefix
-   - Include the task completed and any PRD reference
+   - Include the task completed and the ticket path
    - List key decisions made
    - List files changed
    - Note any blockers for the next iteration
-6. **Close** — close the issue with `.sandcastle/tracker close <id> "<what was done>"`, using the issue's `id` from the list. View one issue with `.sandcastle/tracker view <id>`.
+6. **Tick** — in the ticket file, change `- [ ]` to `- [x]` for every box this commit meets. Leave the rest.
+7. **Close** — close the issue with `.sandcastle/tracker close <id> "<what was done>"`, using the issue's `id` from the list. View one issue with `.sandcastle/tracker view <id>`.
 
 ## Rules
 
