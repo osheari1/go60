@@ -118,6 +118,13 @@ var Reach = (function () {
 
   function layerName(layout, n) { return layout.layer_names[n] !== undefined ? layout.layer_names[n] : 'layer ' + n; }
 
+  // The editor's &magic holds the layer that carries the bootloader keys, whatever it is named.
+  function magicLayer(layout) {
+    for (var n = 0; n < layout.layers.length; n++)
+      if (layout.layers[n].some(function (b) { return b && b.value === '&bootloader'; })) return n;
+    return null;
+  }
+
   function find(list, name) {
     for (var i = 0; i < (list || []).length; i++) if (list[i].name === name) return list[i];
     return null;
@@ -140,7 +147,7 @@ var Reach = (function () {
       case '&caps_word': return { kind: 'special', label: 'CapsW', words: 'Caps Word: types the next word in capitals' };
       case '&key_repeat': return { kind: 'special', label: 'Rpt', words: 'repeats the last key' };
       case '&magic': return { kind: 'holdtap',
-        hold: { kind: 'layer', how: 'hold', layer: layout.layer_names.indexOf('Magic') },
+        hold: { kind: 'layer', how: 'hold', layer: ps[0] !== undefined ? val(ps[0]) : magicLayer(layout) },
         tap: { kind: 'special', label: '✦', words: 'shows the status lights' } };
       case '&bootloader': return { kind: 'special', danger: true, label: 'Boot',
         words: 'Bootloader: this half stops being a keyboard and waits for new firmware' };

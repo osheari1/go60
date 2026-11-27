@@ -40,6 +40,33 @@ def die(msg):
     sys.exit(f"go60-train: {msg}")
 
 
+def read(path, what):
+    # A file's text, or a go60-train: message naming what it is and why it cannot be read.
+    try:
+        return utf8(path.read_bytes(), f"{what} {path}")
+    except OSError as e:
+        die(f"cannot read {what} {path}: {e.strerror}")
+
+
+def utf8(data, what):
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        die(f"{what} is not UTF-8: byte {e.start}")
+
+
+def board_keys():
+    # The key positions from the board's layout description.
+    text = read(INFO, "layout description")
+    try:
+        keys = json.loads(text)["layouts"]["LAYOUT"]["layout"]
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        die(f"layout description {INFO} has no layouts.LAYOUT.layout: {e}")
+    if not isinstance(keys, list) or not keys:
+        die(f"layout description {INFO}: layouts.LAYOUT.layout is not a list of keys")
+    return keys
+
+
 def blob(v):
     # Safe inside <script>: JSON allows "\/", and it stops "</script>" in a string closing the tag.
     return json.dumps(v, ensure_ascii=False).replace("</", "<\\/")
@@ -52,7 +79,7 @@ def page(text):
         die(f"Layout is not JSON: {e}")
     if not isinstance(layout, dict) or layout.get("keyboard") != "go60":
         die(f"keyboard is {layout.get('keyboard') if isinstance(layout, dict) else None!r}, want 'go60'")
-    keys = json.loads(INFO.read_text())["layouts"]["LAYOUT"]["layout"]
+    keys = board_keys()
     names, layers = layout.get("layer_names"), layout.get("layers")
     if not isinstance(names, list) or not isinstance(layers, list) or len(names) != len(layers) or not layers:
         die("Layout needs layer_names and layers of the same, non-zero length")
@@ -60,21 +87,21 @@ def page(text):
         if not isinstance(keys_on, list) or len(keys_on) != len(keys):
             die(f"layer {name}: {len(keys_on) if isinstance(keys_on, list) else 'no'} keys, want {len(keys)}")
     blobs = {"layout": blob(layout), "keys": blob(keys)}
-    return re.sub(r"\{\{(layout|keys)\}\}", lambda m: blobs[m.group(1)], TMPL.read_text())
+    return re.sub(r"\{\{(layout|keys)\}\}", lambda m: blobs[m.group(1)], read(TMPL, "page template"))
 
 
 def main():
     args = sys.argv[1:]
     if args == ["--open"]:
         out = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "go60" / "trainer.html"
-        html = page(layout_path().read_text())
+        html = page(read(layout_path(), "Layout"))
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html)
         if not webbrowser.open(out.as_uri()):
             die(f"could not open a browser; the page is at {out}")
         print(out)
     elif not args:
-        sys.stdout.write(page(sys.stdin.read()))
+        sys.stdout.write(page(utf8(sys.stdin.buffer.read(), "Layout")))
     else:
         die("usage: go60-train < Layout.json > trainer.html | go60-train --open")
 

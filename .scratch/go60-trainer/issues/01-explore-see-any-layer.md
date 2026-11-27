@@ -8,17 +8,17 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Status:** ready-for-agent
 
-- [ ] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
-- [ ] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
-- [ ] Unreadable input exits non-zero with a clear message on stderr and writes no page.
-- [ ] The picture uses the board's own key positions, not hand-drawn geometry.
-- [ ] Every layer in the Layout can be picked; none is hard-coded by name or count.
-- [ ] A hold-tap key shows both its tap and its hold.
-- [ ] A pass-through key is shown as pass-through, with what it falls through to.
-- [ ] Selecting a key shows what it sends in plain words.
-- [ ] Suite check: generator output carries the Layout and the key positions; bad input fails.
-- [ ] GLOSSARY gains Trainer, Explore, Drill, TailorKey, Gallium, Base mode. README tools table gains the Trainer.
-- [ ] The suite prints `all passed`.
+- [x] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
+- [x] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
+- [x] Unreadable input exits non-zero with a clear message on stderr and writes no page.
+- [x] The picture uses the board's own key positions, not hand-drawn geometry.
+- [x] Every layer in the Layout can be picked; none is hard-coded by name or count.
+- [x] A hold-tap key shows both its tap and its hold.
+- [x] A pass-through key is shown as pass-through, with what it falls through to.
+- [x] Selecting a key shows what it sends in plain words.
+- [x] Suite check: generator output carries the Layout and the key positions; bad input fails.
+- [x] GLOSSARY gains Trainer, Explore, Drill, TailorKey, Gallium, Base mode. README tools table gains the Trainer.
+- [x] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
 
 ## Comments

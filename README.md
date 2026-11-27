@@ -34,8 +34,11 @@ agent edits ──────────────────────�
 
 - Give `go60-import` the editor's `.keymap` too: it then proves `go60-gen` matches the editor.
   A mismatch saves the pair as a new golden test in `tests/golden/`.
-- `go60-train` takes a Layout on stdin and writes one offline HTML page on stdout; `--open` builds it from the Layout of the git checkout you are in, else `${GO60_REPO:-~/rs/go60}`
-  under `~/.cache/go60/` and opens the browser. Key positions come from `config/info.json`, the board's own description.
+- `go60-train`, the Trainer:
+  - `go60-train < Layout.json > trainer.html`: one offline HTML page from a Layout on stdin.
+  - `--open` finds the Layout in the git checkout you are in, else in `${GO60_REPO:-~/rs/go60}`.
+  - `--open` writes the page to `${XDG_CACHE_HOME:-~/.cache}/go60/trainer.html` and opens the browser.
+  - Key positions come from `config/info.json`, the board's own description.
 - `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
 - Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
 

@@ -111,6 +111,31 @@ check "go60-train --open: no Layout anywhere says so, without a traceback" \
   '! (cd "$T/elsewhere" && GO60_REPO="$T/nowhere" XDG_CACHE_HOME="$T/cache4" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/none.err") \
    && grep -q "^go60-train: .*go60.json" "$T/none.err" && ! grep -q Traceback "$T/none.err" && [[ ! -e "$T/cache4" ]]'
 
+# Each way the input can be unreadable gives a go60-train: message, no traceback and no page.
+nomsg() { grep -q "^go60-train: " "$1" && ! grep -q Traceback "$1"; }
+jq '.title = "BAD"' "$ROOT/config/go60.json" | sed 's/"BAD"/"\xff"/' > "$T/latin1.json"
+check "go60-train: refuses non-UTF-8 input, with a message and no page" \
+  '! "$ROOT/bin/go60-train" < "$T/latin1.json" >"$T/u8.out" 2>"$T/u8.err" && [[ ! -s "$T/u8.out" ]] && nomsg "$T/u8.err" && grep -q UTF-8 "$T/u8.err"'
+
+unr="$T/unreadable"; mkdir -p "$unr/config"; cp "$ROOT/config/go60.json" "$unr/config/"; chmod 000 "$unr/config/go60.json"
+check "go60-train --open: an unreadable Layout says so, without a traceback" \
+  '! (cd "$T/elsewhere" && GO60_REPO="$unr" XDG_CACHE_HOME="$T/cache5" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/unr.err") \
+   && nomsg "$T/unr.err" && [[ ! -e "$T/cache5/go60/trainer.html" ]]'
+chmod 644 "$unr/config/go60.json"
+
+noinfo="$T/noinfo"; mkdir -p "$noinfo/bin" "$noinfo/lib" "$noinfo/config"
+cp "$ROOT/bin/go60-train" "$noinfo/bin/"; cp "$ROOT/lib/trainer.html" "$noinfo/lib/"
+check "go60-train: a missing info.json says so, without a traceback" \
+  '! "$noinfo/bin/go60-train" < "$ROOT/config/go60.json" >"$T/ni.out" 2>"$T/ni.err" && [[ ! -s "$T/ni.out" ]] && nomsg "$T/ni.err"'
+echo '{"layouts":' > "$noinfo/config/info.json"
+check "go60-train: a bad info.json says so, without a traceback" \
+  '! "$noinfo/bin/go60-train" < "$ROOT/config/go60.json" >"$T/bi.out" 2>"$T/bi.err" && [[ ! -s "$T/bi.out" ]] && nomsg "$T/bi.err"'
+
+renamed="$T/renamed.html"
+jq '.layer_names[-1] = "Sparkle"' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$renamed"
+check "Reach: the magic key finds its layer when that layer is renamed" \
+  '[[ "$(page="$renamed" reach "Reach.key(layout, 0, 36).hold")" == "\"Sparkle\"" ]]'
+
 check "Reach: every layer of the Layout can be picked" \
   '[[ "$(reach "Reach.layers(layout).map(l => l.name)")" == "$(jq -c .layer_names "$ROOT/config/go60.json")" ]]'
 
