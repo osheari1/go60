@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """tracker: Sandcastle's view of the local markdown tracker (docs/agents/issue-tracker.md).
 
-  tracker list           open, unblocked `ready-for-agent` tickets as a JSON array
+  tracker list [ID...]   open, unblocked `ready-for-agent` tickets as a JSON array;
+                         with IDs, only those (empty IDs are ignored)
   tracker view <ID>      print one ticket
   tracker close <ID> <MSG>  set Status: resolved, append MSG under ## Comments, commit
 
@@ -46,9 +47,12 @@ def blockers(p, text):
             yield str(dep[0])
 
 
-def cmd_list():
+def cmd_list(ids):
+    only = {ticket(i) for i in ids if i}
     out = []
     for p in tickets():
+        if only and p not in only:
+            continue
         text = p.read_text()
         if status(text) == "ready-for-agent" and not list(blockers(p, text)):
             out.append({"id": str(p), "title": text.splitlines()[0].lstrip("# "), "body": text})
@@ -71,14 +75,14 @@ def cmd_close(tid, msg):
 
 
 def main(argv):
-    if argv[:1] == ["list"] and len(argv) == 1:
-        cmd_list()
+    if argv[:1] == ["list"]:
+        cmd_list(argv[1:])
     elif argv[:1] == ["view"] and len(argv) == 2:
         sys.stdout.write(ticket(argv[1]).read_text())
     elif argv[:1] == ["close"] and len(argv) == 3:
         cmd_close(argv[1], argv[2])
     else:
-        die("usage: tracker list | view <ID> | close <ID> <MSG>")
+        die("usage: tracker list [ID...] | view <ID> | close <ID> <MSG>")
 
 
 main(sys.argv[1:])

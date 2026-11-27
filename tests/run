@@ -233,6 +233,12 @@ check "tracker: close keeps the blank line after Status" \
   '[[ -z "$(sed -n "/Status/{n;p;}" "$k/.scratch/f/issues/01-a.md")" ]]'
 check "tracker: closing 01 unblocks 02" \
   '[[ "$(trk list | jq -r "map(.id)|join(\",\")")" == ".scratch/f/issues/02-b.md" ]]'
+printf '# 03: c\n\n**Status:** ready-for-agent\n' > "$k/.scratch/f/issues/03-c.md" && git -C "$k" add . && git -C "$k" -c user.name=t -c user.email=t@t commit -qm c
+check "tracker: list <path> lists only that ticket" \
+  '[[ "$(trk list .scratch/f/issues/03-c.md | jq -r "map(.id)|join(\",\")")" == ".scratch/f/issues/03-c.md" ]]'
+check "tracker: list with an empty path lists every ready ticket" \
+  '[[ "$(trk list "" | jq length)" == 2 ]]'
+check "tracker: list <unknown path> fails" '! trk list .scratch/f/issues/09-x.md >/dev/null 2>&1'
 check "tracker: refuses an unknown ticket" '! trk view nope 2>/dev/null'
 
 wait
