@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""go60-gen: Layout (Layout Editor JSON) on stdin -> Keymap (.keymap) on stdout.
+
+Reproduces the Go60 Layout Editor's own keymap export. The static parts come
+from lib/keymap.tmpl; each {{section}} there is rendered from the Layout.
+Exit 1 with a message on stderr when the Layout uses something not handled.
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+TMPL = Path(__file__).resolve().parent.parent / "lib" / "keymap.tmpl"
+
+# The editor's names for system behaviors that differ from ZMK's.
+RENAME = {"&reset": "&sys_reset"}
+
+# Input processors the editor defines on demand, when a listener references one.
+# shortcut: only the ones TailorKey uses; add a row when an import fails on a new one.
+INPUT_PROCESSORS = {
+    "&zip_click_to_right_click_mapper": """        zip_click_to_right_click_mapper: zip_click_to_right_click_mapper {
+            compatible = "zmk,input-processor-code-mapper";
+            #input-processor-cells = <0>;
+            type = <INPUT_EV_KEY>;
+            map = <INPUT_BTN_0 INPUT_BTN_1>;
+        };""",
+}
+
+ON_DEMAND_INCLUDES = """#include <dt-bindings/zmk/input_transform.h>
+#include <dt-bindings/zmk/pointing.h>
+#include <input/processors.dtsi>"""
+
+MACRO_COMPATIBLE = {
+    0: "zmk,behavior-macro",
+    1: "zmk,behavior-macro-one-param",
+    2: "zmk,behavior-macro-two-param",
+}
+
+
+class Gen:
+    def __init__(self, layout, tmpl):
+        self.d = layout
+        self.tmpl = tmpl
+        self.layers = layout["layer_names"]
+        self.pos = {int(n): name for name, n in re.findall(r"^#define (POS_\w+) (\d+)$", tmpl, re.M)}
+        self.td_layers = {}  # layer index -> td behavior name, in first-use order
+
+    def layer(self, i):
+        return "LAYER_" + self.layers[i]
+
+    def param(self, p):
+        v = p["value"]
+        # shortcut: every integer param is a layer index (true of all TailorKey uses).
+        s = self.layer(v) if isinstance(v, int) else str(v)
+        kids = p.get("params") or []
+        return s + "(" + ",".join(self.param(k) for k in kids) + ")" if kids else s
+
+    def binding(self, b):
+        v = RENAME.get(b["value"], b["value"])
+        ps = b.get("params") or []
+        if v == "&magic" and not ps:
+            return "&magic LAYER_Magic 0"
+        if v == "&layer":
+            i = ps[0]["value"]
+            name = "td_" + self.layer(i)
+            self.td_layers.setdefault(i, name)
+            return "&" + name
+        return " ".join([v] + [self.param(p) for p in ps])
+
+    def positions(self, ps):
+        return " ".join(self.pos[p] for p in ps)
+
+    @staticmethod
+    def comment(desc, indent):
+        return [indent + "// " + line if line else indent + "//" for line in desc.split("\n")] if desc else []
+
+    # --- sections -------------------------------------------------------
+
+    def includes(self):
+        return ON_DEMAND_INCLUDES if self.d.get("inputListeners") else ""
+
+    def layer_defines(self):
+        return "\n".join(f"#define {self.layer(i)} {i}" for i in range(len(self.layers)))
+
+    def used_processors(self):
+        used = []
+        for lst in self.d.get("inputListeners", []):
+            procs = list(lst.get("inputProcessors", []))
+            for n in lst.get("nodes", []):
+                procs += n.get("inputProcessors", [])
+            used += [p["code"] for p in procs if p["code"] in INPUT_PROCESSORS and p["code"] not in used]
+        return used
+
+    def input_processors(self):
+        body = "\n".join(INPUT_PROCESSORS[c] for c in self.used_processors())
+        return "/ {\n    input_processors {\n" + body + "\n    };\n};"
+
+    def custom_devicetree(self):
+        return self.d.get("custom_devicetree", "")
+
+    @staticmethod
+    def procs(ps):
+        def one(p):
+            args = [" | ".join(a) if isinstance(a, list) else str(a) for a in p.get("params", [])]
+            return "<" + " ".join([p["code"]] + args) + ">"
+        return ", ".join(one(p) for p in ps)
+
+    def input_listeners(self):
+        out = []
+        for lst in self.d.get("inputListeners", []):
+            lines = [lst["code"] + " {"]
+            if lst.get("inputProcessors"):
+                lines.append(f"    input-processors = {self.procs(lst['inputProcessors'])};")
+            for n in lst.get("nodes", []):
+                lines += self.comment(n.get("description", ""), "    ")
+                lines.append(f"    {n['code']} {{")
+                lines.append("        layers = <" + " ".join(self.layer(i) for i in n["layers"]) + ">;")
+                if n.get("inputProcessors"):
+                    lines.append(f"        input-processors = {self.procs(n['inputProcessors'])};")
+                lines.append("    };")
+            lines.append("};")
+            out.append("\n".join(lines))
+        return "\n\n".join(out)
+
+    def custom_behaviors(self):
+        return "/ {\n" + self.d.get("custom_defined_behaviors", "") + "\n};"
+
+    def macros(self):
+        out = ["/ {", "    macros {"]
+        for m in self.d["macros"]:
+            name = m["name"].lstrip("&")
+            n = len(m.get("params", []))
+            if n not in MACRO_COMPATIBLE:
+                sys.exit(f"go60-gen: macro {name}: {n} params, at most 2 handled")
+            out.append("")
+            out += self.comment(m.get("description", ""), "        ")
+            out += [
+                f"        {name}: {name} {{",
+                f'            label = "{m["name"].upper()}";',
+                f'            compatible = "{MACRO_COMPATIBLE[n]}";',
+                f"            #binding-cells = <{n}>;",
+            ]
+            if "tapMs" in m:
+                out.append(f"            tap-ms = <{m['tapMs']}>;")
+            if "waitMs" in m:
+                out.append(f"            wait-ms = <{m['waitMs']}>;")
+            bs = [f"<{self.binding(b)}>" for b in m["bindings"]]
+            out.append("            bindings = " + "\n                , ".join(bs) + ";")
+            out.append("        };")
+        out += ["    };", "};"]
+        return "\n".join(out)
+
+    def behaviors(self, td_layers):
+        out = ["/ {", "    behaviors {", "", "        // Layer tap dance behaviors", ""]
+        out += [f"        ZMK_TD_LAYER({name}, {i})" for i, name in td_layers.items()]
+        for h in self.d["holdTaps"]:
+            name = h["name"].lstrip("&")
+            out.append("")
+            out += self.comment(h.get("description", ""), "        ")
+            out += [
+                f"        {name}: {name} {{",
+                '            compatible = "zmk,behavior-hold-tap";',
+                "            #binding-cells = <2>;",
+                f"            tapping-term-ms = <{h['tappingTermMs']}>;",
+                "            bindings = " + ", ".join(f"<{b}>" for b in h["bindings"]) + ";",
+                f'            flavor = "{h["flavor"]}";',
+            ]
+            if "quickTapMs" in h:
+                out.append(f"            quick-tap-ms = <{h['quickTapMs']}>;")
+            if "requirePriorIdleMs" in h:
+                out.append(f"            require-prior-idle-ms = <{h['requirePriorIdleMs']}>;")
+            if h.get("holdTriggerKeyPositions"):
+                out.append(f"            hold-trigger-key-positions = <{self.positions(h['holdTriggerKeyPositions'])}>;")
+            if h.get("holdTriggerOnRelease"):
+                out.append("            hold-trigger-on-release;")
+            out.append("        };")
+        out += ["    };", "};"]
+        return "\n".join(out)
+
+    def combos(self):
+        out = ["/ {", "    combos {", '        compatible = "zmk,combos";']
+        for c in self.d["combos"]:
+            out.append("")
+            out += self.comment(c.get("description", ""), "        ")
+            out.append(f"        combo_{c['name']} {{")
+            if "timeoutMs" in c:
+                out.append(f"            timeout-ms = <{c['timeoutMs']}>;")
+            out.append(f"            key-positions = <{self.positions(c['keyPositions'])}>;")
+            out.append(f"            bindings = <{self.binding(c['binding'])}>;")
+            if c.get("layers") and c["layers"] != [-1]:
+                out.append("            layers = <" + " ".join(self.layer(i) for i in c["layers"]) + ">;")
+            out.append("        };")
+        out += ["    };", "};"]
+        return "\n".join(out)
+
+    def keymap(self):
+        # Go60 rows: 12, 12, 12, 12, 6, 6 keys. Column alignment is not reproduced.
+        rows = [12, 12, 12, 12, 6, 6]
+        out = ["/ {", "    keymap {", '        compatible = "zmk,keymap";', ""]
+        for i, keys in enumerate(self.d["layers"]):
+            if len(keys) != 60:
+                sys.exit(f"go60-gen: layer {self.layers[i]}: {len(keys)} keys, want 60")
+            bs = [self.binding(k) for k in keys]
+            out += ["", f"        layer_{self.layers[i]} {{", "            bindings = <"]
+            at = 0
+            for n in rows:
+                out.append(" " + "  ".join(bs[at:at + n]))
+                at += n
+            out += ["            >;", "        };"]
+        out += ["", "    };", "};"]
+        return "\n".join(out)
+
+    def render(self):
+        if self.d.get("keyboard") != "go60":
+            sys.exit(f"go60-gen: keyboard is {self.d.get('keyboard')!r}, want 'go60'")
+        if self.d.get("config_parameters"):
+            sys.exit("go60-gen: config_parameters not handled; put Kconfig in config/go60.conf")
+        # Keymap and combos first: they collect the layer tap dances the behaviors section defines.
+        parts = {"keymap": self.keymap(), "combos": self.combos(), "macros": self.macros()}
+        parts["behaviors"] = self.behaviors(self.td_layers)
+        for s in ["includes", "layer_defines", "input_processors", "custom_devicetree",
+                  "input_listeners", "custom_behaviors"]:
+            parts[s] = getattr(self, s)()
+        return re.sub(r"\{\{(\w+)\}\}", lambda m: parts[m.group(1)], self.tmpl)
+
+
+def main():
+    try:
+        layout = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        sys.exit(f"go60-gen: stdin is not JSON: {e}")
+    try:
+        sys.stdout.write(Gen(layout, TMPL.read_text()).render())
+    except (KeyError, IndexError, TypeError) as e:
+        sys.exit(f"go60-gen: Layout has an unexpected shape: {e!r}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# go60-import <export.json> [editor.keymap]
+#
+# Bring a Layout exported from the Go60 Layout Editor into this checkout:
+# writes config/go60.json and regenerates config/go60.keymap with go60-gen.
+# With the editor's own .keymap export too, also checks go60-gen reproduces it.
+# A mismatch writes nothing to config/, saves the pair as a new golden test
+# under tests/golden/, and exits 1: fix go60-gen until tests/run passes.
+# Run from inside a go60 checkout. Never commits.
+set -euo pipefail
+
+die() { printf 'go60-import: %s\n' "$1" >&2; exit 1; }
+tokens() { tr -s ' \t\n' '\n\n\n' < "$1"; }
+
+[[ $# -ge 1 && $# -le 2 ]] || die "usage: go60-import <export.json> [editor.keymap]"
+json="$1"; editor_keymap="${2:-}"
+[[ -f "$json" ]] || die "no such file: $json"
+[[ -z "$editor_keymap" || -f "$editor_keymap" ]] || die "no such file: $editor_keymap"
+
+gen="$(dirname "$(realpath "$0")")/go60-gen"
+root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git checkout"
+[[ -f "$root/config/go60.conf" ]] || die "$root is not a go60 checkout (no config/go60.conf)"
+
+out=$(mktemp); trap 'rm -f "$out"' EXIT
+"$gen" < "$json" > "$out" || die "go60-gen failed on $json; nothing written"
+
+if [[ -n "$editor_keymap" ]] && ! diff -q <(tokens "$out") <(tokens "$editor_keymap") >/dev/null; then
+  g="$root/tests/golden/import-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$g"
+  cp "$json" "$g/layout.json"; cp "$editor_keymap" "$g/keymap"
+  die "go60-gen output differs from the editor's Keymap; nothing written to config/.
+  Saved the pair as golden test $g. Fix go60-gen until tests/run passes, then re-run."
+fi
+
+cp "$json" "$root/config/go60.json"
+cp "$out" "$root/config/go60.keymap"
+git -C "$root" diff --stat -- config/go60.json config/go60.keymap
+echo "go60-import: wrote config/go60.json and config/go60.keymap. Review, then commit."

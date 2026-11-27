@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# tests/run: the whole suite. Prints ok:/FAIL: lines; exits 1 on any failure.
+# Needs no hardware, network or root: Bootloader drives are faked as directories.
+set -uo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+FAILS=0
+ok()   { printf 'ok: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
+check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
+
+# Compare two keymaps ignoring whitespace: the editor column-aligns layers, go60-gen does not.
+tokens() { tr -s ' \t\n' '\n\n\n' < "$1"; }
+
+# --- go60-gen -------------------------------------------------------------
+
+for g in "$ROOT"/tests/golden/*/; do
+  name=$(basename "$g")
+  out=$(mktemp)
+  if "$ROOT/bin/go60-gen" < "$g/layout.json" > "$out" && diff -q <(tokens "$out") <(tokens "$g/keymap") >/dev/null; then
+    ok "go60-gen golden $name"
+  else
+    fail "go60-gen golden $name (diff <(tr -s ' \\n' '\\n\\n' < $g/keymap) <(bin/go60-gen < $g/layout.json | tr -s ' \\n' '\\n\\n'))"
+  fi
+  rm -f "$out"
+done
+
+check "go60-gen: committed Keymap is current" \
+  'diff -q <("$ROOT/bin/go60-gen" < "$ROOT/config/go60.json") "$ROOT/config/go60.keymap" >/dev/null'
+
+check "go60-gen: refuses a non-go60 Layout" \
+  '! echo "{\"keyboard\":\"glove80\"}" | "$ROOT/bin/go60-gen" >/dev/null 2>&1'
+
+check "go60-gen: refuses non-JSON" '! echo nope | "$ROOT/bin/go60-gen" >/dev/null 2>&1'
+
+# --- go60-import ----------------------------------------------------------
+
+T=$(mktemp -d)
+if [[ -n "${KEEP:-}" ]]; then echo "kept: $T" >&2; else trap 'rm -rf "$T"' EXIT; fi
+G="$ROOT/tests/golden/tailorkey-4.2l"
+
+# A throwaway copy of the repo shape go60-import writes into.
+repo="$T/repo"
+mkdir -p "$repo/config" "$repo/tests/golden"
+git -C "$repo" init -q
+cp "$ROOT/config/go60.conf" "$repo/config/"
+
+check "go60-import: writes Layout and Keymap" \
+  '(cd "$repo" && "$ROOT/bin/go60-import" "$G/layout.json" >/dev/null) \
+   && cmp -s "$repo/config/go60.json" "$G/layout.json" \
+   && diff -q <(tokens "$repo/config/go60.keymap") <(tokens "$G/keymap") >/dev/null'
+
+check "go60-import: accepts a matching editor Keymap" \
+  '(cd "$repo" && "$ROOT/bin/go60-import" "$G/layout.json" "$G/keymap" >/dev/null 2>&1)'
+
+sed 's/&kp EQUAL/\&kp PLUS/' "$G/keymap" > "$T/wrong.keymap"
+check "go60-import: mismatching editor Keymap fails and saves a golden pair" \
+  '! (cd "$repo" && "$ROOT/bin/go60-import" "$G/layout.json" "$T/wrong.keymap" >/dev/null 2>&1) \
+   && ls "$repo"/tests/golden/*/keymap >/dev/null 2>&1'
+
+check "go60-import: refuses outside a go60 checkout" \
+  '! (cd "$T" && "$ROOT/bin/go60-import" "$G/layout.json" >/dev/null 2>&1)'
+
+# --- go60-flash -----------------------------------------------------------
+
+# Stubs: findmnt knows nothing; udisksctl "mounts" DEV_DIR/<label> at MNT_DIR/<label>.
+stubs="$T/stubs"; mkdir -p "$stubs"
+printf '#!/bin/sh\nexit 1\n' > "$stubs/findmnt"
+cat > "$stubs/udisksctl" <<'EOF'
+#!/bin/sh
+dev=$(echo "$@" | sed 's/.*-b \([^ ]*\).*/\1/')
+echo "Mounted $dev at $MNT_DIR/$(basename "$dev")"
+EOF
+chmod +x "$stubs"/*
+
+# fake_half LABEL [noinfo]: a Bootloader drive that "resets" (vanishes) once a .uf2 lands on it.
+fake_half() {
+  local dev="$DEV_DIR/$1" mnt="$MNT_DIR/$1"
+  mkdir -p "$mnt"; [[ "${2:-}" == noinfo ]] || echo "UF2 Bootloader" > "$mnt/INFO_UF2.TXT"
+  : > "$dev"
+  ( for _ in $(seq 100); do ls "$mnt"/*.uf2 >/dev/null 2>&1 && { rm -f "$dev"; exit; }; sleep 0.1; done ) &
+}
+
+flash_env() {
+  export DEV_DIR="$1/dev" MNT_DIR="$1/mnt" GO60_DEV_DIR="$1/dev" GO60_TIMEOUT=5
+  mkdir -p "$DEV_DIR" "$MNT_DIR"
+}
+
+img="$T/go60.uf2"; echo firmware > "$img"
+
+f="$T/f1"; flash_env "$f"
+fake_half GO60RHBOOT; fake_half GO60LHBOOT
+check "go60-flash: flashes right then left" \
+  'PATH="$stubs:$PATH" "$ROOT/bin/go60-flash" "$img" </dev/null >"$f/log" 2>&1 \
+   && cmp -s "$MNT_DIR/GO60RHBOOT/go60.uf2" "$img" && cmp -s "$MNT_DIR/GO60LHBOOT/go60.uf2" "$img"'
+
+f="$T/f2"; flash_env "$f"
+fake_half GO60RHBOOT noinfo
+check "go60-flash: refuses a drive without INFO_UF2.TXT" \
+  '! PATH="$stubs:$PATH" "$ROOT/bin/go60-flash" "$img" </dev/null >"$f/log" 2>&1 \
+   && grep -q "not a Go60 bootloader drive" "$f/log" && [[ ! -e "$MNT_DIR/GO60RHBOOT/go60.uf2" ]]'
+
+f="$T/f3"; flash_env "$f"; export GO60_TIMEOUT=1
+check "go60-flash: times out loudly with no drive" \
+  '! PATH="$stubs:$PATH" "$ROOT/bin/go60-flash" "$img" </dev/null >"$f/log" 2>&1 && grep -q "timed out" "$f/log"'
+
+check "go60-flash: refuses a non-.uf2 file" \
+  '! "$ROOT/bin/go60-flash" "$ROOT/README.md" >/dev/null 2>&1'
+
+wait
+if ((FAILS)); then printf '%d failed\n' "$FAILS"; exit 1; fi
+echo "all passed"
