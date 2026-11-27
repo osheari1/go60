@@ -11,8 +11,8 @@ Run from the repo root. Exits non-zero with a message on stderr on any error.
 import json, re, subprocess, sys
 from pathlib import Path
 
-STATUS = re.compile(r"^(\**Status:\**\s*)(.+?)\s*$", re.M)
-BLOCKED = re.compile(r"^\**Blocked by:\**\s*(.+?)\s*$", re.M)
+STATUS = re.compile(r"^(\**Status:\**[ \t]*)(.+?)[ \t]*$", re.M)
+BLOCKED = re.compile(r"^\**Blocked by:\**[ \t]*(.+?)[ \t]*$", re.M)
 
 
 def die(msg):
