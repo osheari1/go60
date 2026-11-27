@@ -89,9 +89,27 @@ check "go60-train: refuses a layer with the wrong number of keys" \
 
 printf '#!/bin/sh\necho "$1" > "%s"\n' "$T/opened" > "$T/browser"; chmod +x "$T/browser"
 check "go60-train --open: writes the page under the cache directory and opens it, from any directory" \
-  '(cd "$T" && XDG_CACHE_HOME="$T/cache" BROWSER="$T/browser %s" "$ROOT/bin/go60-train" --open >/dev/null 2>&1) \
+  '(cd "$T" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache" BROWSER="$T/browser %s" "$ROOT/bin/go60-train" --open >/dev/null 2>&1) \
    && [[ "$(cat "$T/opened")" == "file://$T/cache/go60/trainer.html" ]] \
    && cmp -s "$T/cache/go60/trainer.html" "$page"'
+
+# Installed by cfg: <prefix>/lib/go60/{bin,lib,config/info.json}, a bin symlink, no Layout.
+inst="$T/inst"; mkdir -p "$inst/lib/go60/bin" "$inst/lib/go60/lib" "$inst/lib/go60/config" "$inst/bin" "$T/elsewhere"
+cp "$ROOT/bin/go60-train" "$inst/lib/go60/bin/"; cp "$ROOT/lib/trainer.html" "$inst/lib/go60/lib/"
+cp "$ROOT/config/info.json" "$inst/lib/go60/config/"; ln -s ../lib/go60/bin/go60-train "$inst/bin/go60-train"
+rm -f "$T/opened"
+check "go60-train --open: installed, finds the Layout in GO60_REPO from an unrelated directory" \
+  '(cd "$T/elsewhere" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache2" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/inst.err") \
+   && [[ "$(cat "$T/opened")" == "file://$T/cache2/go60/trainer.html" ]] \
+   && cmp -s "$T/cache2/go60/trainer.html" "$page" || { cat "$T/inst.err" >&2; false; }'
+
+check "go60-train --open: installed, prefers the git checkout it runs in" \
+  '(cd "$repo/config" && GO60_REPO="$ROOT" XDG_CACHE_HOME="$T/cache3" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>&1) \
+   && diff -q <(page="$T/cache3/go60/trainer.html" reach layout | jq -S .) <(jq -S . "$repo/config/go60.json") >/dev/null'
+
+check "go60-train --open: no Layout anywhere says so, without a traceback" \
+  '! (cd "$T/elsewhere" && GO60_REPO="$T/nowhere" XDG_CACHE_HOME="$T/cache4" BROWSER="$T/browser %s" "$inst/bin/go60-train" --open >/dev/null 2>"$T/none.err") \
+   && grep -q "^go60-train: .*go60.json" "$T/none.err" && ! grep -q Traceback "$T/none.err" && [[ ! -e "$T/cache4" ]]'
 
 check "Reach: every layer of the Layout can be picked" \
   '[[ "$(reach "Reach.layers(layout).map(l => l.name)")" == "$(jq -c .layer_names "$ROOT/config/go60.json")" ]]'

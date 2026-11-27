@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """go60-train: Layout (Layout Editor JSON) on stdin -> Trainer page (one HTML file) on stdout.
 
-go60-train --open: build the page from this repo's Layout, write it under the user
+go60-train --open: build the page from the Layout (this git checkout's, else $GO60_REPO's), write it under the user
 cache directory and open it in the default browser.
 
 The page is lib/trainer.html with two JSON blobs filled in: the Layout, and the
@@ -11,6 +11,7 @@ Exit 1 with a message on stderr when the Layout cannot be read; no page is writt
 import json
 import os
 import re
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
@@ -18,7 +19,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TMPL = ROOT / "lib" / "trainer.html"
 INFO = ROOT / "config" / "info.json"
-LAYOUT = ROOT / "config" / "go60.json"
+
+def layout_path():
+    # The git checkout of the current directory if it holds a Layout, else GO60_REPO (default ~/rs/go60).
+    try:
+        git = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    except OSError:
+        git = None
+    tried = []
+    if git and git.returncode == 0:
+        tried.append(Path(git.stdout.strip()) / "config" / "go60.json")
+    tried.append(Path(os.environ.get("GO60_REPO") or Path.home() / "rs" / "go60") / "config" / "go60.json")
+    for p in tried:
+        if p.is_file():
+            return p
+    die("no Layout found; looked for " + " and ".join(map(str, tried)) + " (set GO60_REPO to your go60 checkout)")
 
 
 def die(msg):
@@ -52,7 +67,7 @@ def main():
     args = sys.argv[1:]
     if args == ["--open"]:
         out = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "go60" / "trainer.html"
-        html = page(LAYOUT.read_text())
+        html = page(layout_path().read_text())
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html)
         if not webbrowser.open(out.as_uri()):
