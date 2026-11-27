@@ -1,3 +1,5 @@
 *~
 *.uf2
 .worktrees/
+node_modules/
+
