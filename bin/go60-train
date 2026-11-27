@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""go60-train: Layout (Layout Editor JSON) on stdin -> Trainer page (one HTML file) on stdout.
+
+go60-train --open: build the page from this repo's Layout, write it under the user
+cache directory and open it in the default browser.
+
+The page is lib/trainer.html with two JSON blobs filled in: the Layout, and the
+key positions from the board's layout description (config/info.json). Nothing else.
+Exit 1 with a message on stderr when the Layout cannot be read; no page is written.
+"""
+import json
+import os
+import re
+import sys
+import webbrowser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TMPL = ROOT / "lib" / "trainer.html"
+INFO = ROOT / "config" / "info.json"
+LAYOUT = ROOT / "config" / "go60.json"
+
+
+def die(msg):
+    sys.exit(f"go60-train: {msg}")
+
+
+def blob(v):
+    # Safe inside <script>: JSON allows "\/", and it stops "</script>" in a string closing the tag.
+    return json.dumps(v, ensure_ascii=False).replace("</", "<\\/")
+
+
+def page(text):
+    try:
+        layout = json.loads(text)
+    except json.JSONDecodeError as e:
+        die(f"Layout is not JSON: {e}")
+    if not isinstance(layout, dict) or layout.get("keyboard") != "go60":
+        die(f"keyboard is {layout.get('keyboard') if isinstance(layout, dict) else None!r}, want 'go60'")
+    keys = json.loads(INFO.read_text())["layouts"]["LAYOUT"]["layout"]
+    names, layers = layout.get("layer_names"), layout.get("layers")
+    if not isinstance(names, list) or not isinstance(layers, list) or len(names) != len(layers) or not layers:
+        die("Layout needs layer_names and layers of the same, non-zero length")
+    for name, keys_on in zip(names, layers):
+        if not isinstance(keys_on, list) or len(keys_on) != len(keys):
+            die(f"layer {name}: {len(keys_on) if isinstance(keys_on, list) else 'no'} keys, want {len(keys)}")
+    blobs = {"layout": blob(layout), "keys": blob(keys)}
+    return re.sub(r"\{\{(layout|keys)\}\}", lambda m: blobs[m.group(1)], TMPL.read_text())
+
+
+def main():
+    args = sys.argv[1:]
+    if args == ["--open"]:
+        out = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "go60" / "trainer.html"
+        html = page(LAYOUT.read_text())
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html)
+        if not webbrowser.open(out.as_uri()):
+            die(f"could not open a browser; the page is at {out}")
+        print(out)
+    elif not args:
+        sys.stdout.write(page(sys.stdin.read()))
+    else:
+        die("usage: go60-train < Layout.json > trainer.html | go60-train --open")
+
+
+if __name__ == "__main__":
+    main()
