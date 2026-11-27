@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
 - [x] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
@@ -36,3 +36,5 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - "none is hard-coded by name or count" is broken: `lib/trainer.html` finds `&magic`'s layer with `layout.layer_names.indexOf('Magic')`. Find it from the Layout's structure. Red first: a check with that layer renamed.
   - README's `go60-train` bullet is one long line. Split into short sub-bullets: stdin/stdout, where `--open` finds the Layout, where it writes.
   - Tick every box above that the code meets.
+
+- Closed by RALPH: go60-train now gives a go60-train: message, with no traceback, for non-UTF-8 stdin, an unreadable Layout under --open, and a missing or bad info.json. &magic's layer comes from its parameter, else from the layer holding &bootloader, not from the name 'Magic'. There are red-first suite checks for each. README bullet split. Boxes ticked. Still needs a human: merge, tag go60, bump the cfg component. Also, go60-gen still hard-codes LAYER_Magic.
