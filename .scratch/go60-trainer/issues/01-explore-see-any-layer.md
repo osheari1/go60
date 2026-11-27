@@ -6,8 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
-
+**Status:** resolved
 - [ ] The generator takes a Layout on stdin and writes one HTML page on stdout; the page needs no network and no server.
 - [ ] `--open` reads the repo's Layout, writes the page under the user cache directory, and opens the default browser.
 - [ ] Unreadable input exits non-zero with a clear message on stderr and writes no page.
@@ -20,3 +19,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [ ] GLOSSARY gains Trainer, Explore, Drill, TailorKey, Gallium, Base mode. README tools table gains the Trainer.
 - [ ] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
+
+## Comments
+
+- Closed by RALPH: go60-train + lib/trainer.html (Reach module, Explore UI), suite checks via tests/page.js, README/GLOSSARY updated; commit 6e8abcd. Remaining shipping steps need a human: merge PR, tag go60, bump the go60 cfg component so go60-train is on PATH.
