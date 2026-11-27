@@ -1,4 +1,5 @@
 {
+  "name": "go60",
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.14.1"
   }
