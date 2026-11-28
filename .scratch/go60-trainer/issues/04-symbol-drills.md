@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Stage 1: short random groups drawn from the symbols the Reach module finds on `Symbol`.
 - [x] Stage 2: built-in shell and Python lines.
@@ -15,3 +15,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [x] Suite check: every token the symbol stages generate is reachable.
 - [x] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
+
+## Comments
+
+- Closed by RALPH: Two Symbol stages in lib/trainer.html: random groups of the 32 symbols Reach finds on Symbol, then built-in shell and Python lines. In those stages the hint lights the Symbol path even where a base key sends the symbol; the engine still accepts the character the board sent, whichever path sent it. Suite checks the stage symbols, both generators, reachability and hints of every token, and Symbol-path hints. Still needs a human: merge, tag go60, bump cfg's go60 component.
