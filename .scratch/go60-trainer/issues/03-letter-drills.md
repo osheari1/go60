@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 02
 
-**Status:** resolved
+**Status:** ready-for-agent
 
 - [x] A drill shows three lines of text; I type through them and can read ahead.
 - [x] A wrong key blocks progress until the right key is pressed, and counts one error.
@@ -24,3 +24,9 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 ## Comments
 
 - Closed by RALPH: Drill module in lib/trainer.html: engine (position, errors, blocking, accuracy, wpm), three-line wrap, five letter stages from the Layout's rows (info.json row + home-row-mod detection), built-in word list, Caps Word hints; keyboard-only Drill mode with hint picture and toggle; nothing saved. Suite checks the engine, stages, Layout-driven rows and reachability of every generated token. Still needs a human: merge, tag go60, bump cfg's go60 component.
+- Reopened (operator, 2026-11-28), from code review:
+  - "a toggle hides the picture": `h` works only on the stage picker. Mid-drill `h` is a letter, so the picture can't be hidden during a drill. Want a toggle that works mid-drill and never collides with a character the drill asks for.
+  - Fail loud: `generate` returns `[]` when its pool is empty, so a stage silently has no text. Want a visible error naming the stage instead.
+  - Home-row stage: keep the whole home row (`aeghinrsty`, with `G` and `Y`). Operator chose this over only `N R T S` / `H A E I`.
+  - Red first: a suite check per behaviour you can reach headless; see each fail first.
+  - Tick every box above that the code meets.

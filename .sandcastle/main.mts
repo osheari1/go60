@@ -5,6 +5,12 @@ import { bwrap } from "@ai-hero/sandcastle/sandboxes/bwrap";
 // Run this with: npx tsx .sandcastle/main.mts
 // Or add to package.json scripts: "sandcastle": "npx tsx .sandcastle/main.mts"
 
+const iterations = Number(process.env.ITERATIONS ?? 1);
+if (!Number.isInteger(iterations) || iterations < 1) {
+  console.error(`ITERATIONS must be a whole number, 1 or more; got "${process.env.ITERATIONS}"`);
+  process.exit(1);
+}
+
 await run({
   // A name for this run, shown as a prefix in log output.
   name: "worker",
@@ -24,7 +30,7 @@ await run({
   // Maximum number of iterations (agent invocations) to run in a session.
   // Each iteration works on a single issue. Increase this to process more issues
   // per run, or set it to 1 for a single-shot mode.
-  maxIterations: Number(process.env.ITERATIONS ?? 1),
+  maxIterations: iterations,
 
   // Branch strategy — merge-to-head creates a temporary branch for the agent
   // to work on, then merges the result back to HEAD when the run completes.

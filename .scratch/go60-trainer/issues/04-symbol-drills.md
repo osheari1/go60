@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 03
 
-**Status:** resolved
+**Status:** ready-for-agent
 
 - [x] Stage 1: short random groups drawn from the symbols the Reach module finds on `Symbol`.
 - [x] Stage 2: built-in shell and Python lines.
@@ -19,3 +19,9 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 ## Comments
 
 - Closed by RALPH: Two Symbol stages in lib/trainer.html: random groups of the 32 symbols Reach finds on Symbol, then built-in shell and Python lines. In those stages the hint lights the Symbol path even where a base key sends the symbol; the engine still accepts the character the board sent, whichever path sent it. Suite checks the stage symbols, both generators, reachability and hints of every token, and Symbol-path hints. Still needs a human: merge, tag go60, bump cfg's go60 component.
+- Reopened (operator, 2026-11-28), from code review:
+  - `symbolStages` finds the layer with `layout.layer_names.indexOf('Symbol')`. ADR 0001: the Layout is the source of truth; rename the layer and both Symbol stages vanish. Find it from the Layout's structure (as `&magic`'s layer is found in ticket 01).
+  - Fail loud: a missing Symbol layer, or `symbolDrill` with no lines, must show a visible error, not an empty stage list or drill.
+  - README says "symbols on `Symbol`": describe it without the name, or say the name is today's.
+  - Red first: a suite check with that layer renamed, and one for the missing-layer error; see them fail first.
+  - Tick every box above that the code meets.
