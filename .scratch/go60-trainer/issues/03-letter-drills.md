@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A drill shows three lines of text; I type through them and can read ahead.
 - [x] A wrong key blocks progress until the right key is pressed, and counts one error.
@@ -30,3 +30,5 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - Home-row stage: keep the whole home row (`aeghinrsty`, with `G` and `Y`). Operator chose this over only `N R T S` / `H A E I`.
   - Red first: a suite check per behaviour you can reach headless; see each fail first.
   - Tick every box above that the code meets.
+
+- Closed by RALPH: Review fixes: Tab toggles the picture on the picker and mid-drill (Drill.read, never a drill token); generate throws an error naming the stage when no word fits, and the UI shows it; the home row stays aeghinrsty. Each fix has a suite check that failed first. Still needs a human: merge, tag go60, bump cfg's go60 component.
