@@ -50,10 +50,22 @@
   .combo rect { fill: var(--bg); stroke: var(--combo); }
   .combo text { fill: var(--combo); font-size: 10px; text-anchor: middle; dominant-baseline: central; }
   .combo { pointer-events: visiblePainted; }
+  #drill { max-width: 1100px; margin-bottom: 1rem; }
+  #drill-menu ol { margin: .3rem 0; padding-left: 1.5rem; }
+  #drill-menu li[aria-current="true"] { color: var(--sel); }
+  #drill-menu .letters { color: var(--dim); }
+  #drill-text { font: 1.6rem/1.7 ui-monospace, monospace; white-space: pre; margin: .5rem 0; }
+  #drill-text .done { color: var(--dim); }
+  #drill-text .cur { background: #24364a; border-bottom: 2px solid var(--sel); }
+  #drill-text .cur.bad { background: #4a2424; border-bottom-color: var(--danger); }
+  #drill-stats { font-size: 1.2rem; color: var(--sel); min-height: 1.4em; }
+  body.drilling #layers, body.drilling .find, body.drilling #found, body.drilling #note,
+  body.drilling #ways, body.drilling #info, body.drilling .legend { display: none; }
+  body.drilling.nopic #board { display: none; }
 </style>
 </head>
 <body>
-<h1>Go60 Trainer · Explore</h1>
+<h1>Go60 Trainer · <span id="mode">Explore</span></h1>
 <div class="title" id="title"></div>
 <nav id="layers" aria-label="Layers"></nav>
 <div class="find"><label>Find <input id="search" type="search" placeholder="a character or key: {  F1  Ctrl  A  Ctrl+Z  Bootloader" autocomplete="off"></label>
@@ -61,9 +73,15 @@
 <div id="found" aria-live="polite"></div>
 <p id="note"></p>
 <div id="ways"></div>
+<section id="drill" hidden>
+  <div id="drill-menu"></div>
+  <div id="drill-text"></div>
+  <div id="drill-stats" aria-live="polite"></div>
+  <div id="drill-hint" class="where"></div>
+</section>
 <svg id="board" role="img" aria-label="Go60 keys on the chosen layer"></svg>
 <div class="legend">Top: tap. <b>Bottom: hold.</b> Dashed: pass-through (shows what it falls through to). Linked dots: a combo, pressed together.
-  Found: <b>hold</b> these, <span class="t">tap</span> these. Select a key to see what it sends; ← → change layer; / to find.</div>
+  Found: <b>hold</b> these, <span class="t">tap</span> these. Select a key to see what it sends; ← → change layer; / to find; d to drill.</div>
 <section id="info" aria-live="polite">Select a key.</section>
 
 <script id="data-layout" type="application/json">{{layout}}</script>
@@ -329,7 +347,7 @@ var Reach = (function () {
     var m = MODELS && MODELS.get(layout);
     if (m) return m;
     m = { at: layout.layers.map(function (l) { return l.map(function (b) { return resolve(layout, b); }); }),
-      states: {}, ways: {} };
+      states: {}, ways: {}, paths: {} };
     if (MODELS) MODELS.set(layout, m);
     return m;
   }
@@ -488,6 +506,12 @@ var Reach = (function () {
   // A path: hold (positions, in order), tap (positions; two or more for a combo), layer (where the tap lands),
   // active (layers on at the tap), combo (its name, or null), words.
   function paths(layout, query, base) {
+    var m = model(layout), id = (base || 0) + '|' + query;
+    if (!m.paths.hasOwnProperty(id)) m.paths[id] = search(layout, query, base);
+    return m.paths[id].slice();
+  }
+
+  function search(layout, query, base) {
     var q = parse(String(query)), m = model(layout), found = [];
     if (!q.char && !q.name && !q.mods) return [];
     states(layout, base || 0).forEach(function (s) {
@@ -699,10 +723,11 @@ var Reach = (function () {
     if (d.kind === 'trans') {
       var lower = (active || route(layout, n)).filter(function (l) { return l < n; });
       var hit = lookup(m, lower, pos);
-      if (!hit) return { kind: 'trans', tap: '▽', hold: null, words: 'pass-through, to nothing', through: null, danger: false };
+      if (!hit) return { kind: 'trans', tap: '▽', hold: null, words: 'pass-through, to nothing', through: null, danger: false,
+        types: null, mods: [] };
       var k = key(layout, hit.layer, pos);
       var to = layerName(layout, hit.layer);
-      return { kind: 'trans', tap: k.tap, hold: k.hold, danger: k.danger, through: to,
+      return { kind: 'trans', tap: k.tap, hold: k.hold, danger: k.danger, through: to, types: k.types, mods: k.mods,
         words: 'Pass-through: does what ' + to + ' does here. ' + cap(k.words) };
     }
     var w = words(layout, d);
@@ -712,7 +737,10 @@ var Reach = (function () {
       hold: d.kind === 'holdtap' ? holdLabel(layout, d.hold) : null,
       words: /\.$/.test(w) ? w : cap(w) + '.',
       through: null,
-      danger: danger(d)
+      danger: danger(d),
+      // What a tap types (a character, or null), and the modifiers a hold gives.
+      types: text(d.kind === 'holdtap' ? d.tap : d),
+      mods: holdOf(d).mods.map(function (c) { return MODS[c]; })
     };
   }
 
@@ -724,6 +752,202 @@ var Reach = (function () {
     bases: bases, note: note, combos: combos, wayWords: wayWords };
 })();
 if (typeof module !== 'undefined') module.exports = Reach;
+</script>
+
+<script id="drill">
+// Drill: the engine every drill uses, and the letter stages. Reads the Layout only through Reach.
+// Loadable by Node with no browser (tests/page.js).
+var Drill = (function () {
+  'use strict';
+
+  var WIDTH = 60, LINES = 3;
+
+  // Common English words, most common first. Built in: the page never touches the network.
+  var WORDS = ('the of and to in is it you that he was for on are with as his they be at one have this from ' +
+    'or had by hot word but what some we can out other were all there when up use your how said an each she ' +
+    'which do their time if will way about many then them write would like so these her long make thing see ' +
+    'him two has look more day could go come did number sound no most people my over know water than call ' +
+    'first who may down side been now find any new work part take get place made live where after back little ' +
+    'only round man year came show every good me give our under name very through just form sentence great ' +
+    'think say help low line differ turn cause much mean before move right boy old too same tell does set ' +
+    'three want air well also play small end put home read hand port large spell add even land here must big ' +
+    'high such follow act why ask men change went light kind off need house picture try us again animal point ' +
+    'mother world near build self earth father head stand own page should country found answer school grow ' +
+    'study still learn plant cover food sun four between state keep eye never last let thought city tree cross ' +
+    'farm hard start might story saw far sea draw left late run while press close night real life few north ' +
+    'open seem together next white children begin got walk example ease paper group always music those both ' +
+    'mark often letter until mile river car feet care second book carry took science eat room friend began ' +
+    'idea fish mountain stop once base hear horse cut sure watch color face wood main enough plain girl usual ' +
+    'young ready above ever red list though feel talk bird soon body dog family direct pose leave song measure ' +
+    'door product black short numeral class wind question happen complete ship area half rock order fire south ' +
+    'problem piece told knew pass since top whole king space heard best hour better true during hundred five ' +
+    'remember step early hold west ground interest reach fast verb sing listen six table travel less morning ' +
+    'ten simple several vowel toward war lay against pattern slow center love person money serve appear road ' +
+    'map rain rule govern pull cold notice voice unit power town fine certain fly fall lead cry dark machine ' +
+    'note wait plan figure star box noun field rest correct able pound done beauty drive stood contain front ' +
+    'teach week final gave green oh quick develop ocean warm free minute strong special mind behind clear tail ' +
+    'produce fact street inch multiply nothing course stay wheel full force blue object decide surface deep ' +
+    'moon island foot system busy test record boat common gold possible plane stead dry wonder laugh thousand ' +
+    'ago ran check game shape equate miss brought heat snow tire bring yes distant fill east paint language ' +
+    'among grand ball yet wave drop heart present heavy dance engine position arm wide sail material size vary ' +
+    'settle speak weight general ice matter circle pair include divide syllable felt perhaps pick sudden count ' +
+    'square reason length represent art subject region energy hunt probable bed brother egg ride cell believe ' +
+    'fraction forest sit race window store summer train sleep prove lone exercise wall catch mount wish sky ' +
+    'board joy winter sat written wild instrument kept glass grass cow job edge sign visit past soft fun bright ' +
+    'gas weather month million bear finish happy hope flower clothe strange gone jump baby eight village meet ' +
+    'root buy raise solve metal whether push seven paragraph third shall held hair describe cook floor either ' +
+    'result burn hill safe cat century consider type law bit coast copy phrase silent tall sand soil roll ' +
+    'temperature finger industry value fight lie beat excite natural view sense ear else quite broke case ' +
+    'middle kill son lake moment scale loud spring child straight consonant nation dictionary milk speed method ' +
+    'organ pay age section dress cloud surprise quiet stone tiny climb cool design poor lot experiment bottom ' +
+    'key iron single stick flat twenty skin smile crease hole trade melody trip office receive row mouth exact ' +
+    'symbol die least trouble shout except wrote seed tone join suggest clean break lady yard rise bad blow oil ' +
+    'blood touch grew cent mix team wire cost lost brown wear garden equal sent choose fell fit flow fair bank ' +
+    'collect save control decimal gentle woman captain practice separate difficult doctor please protect noon ' +
+    'whose locate ring character insect caught period indicate radio spoke atom human history effect electric ' +
+    'expect crop modern element hit student corner party supply bone rail imagine provide agree thus capital ' +
+    'chair danger fruit rich thick soldier process operate guess necessary sharp wing create neighbor wash bat ' +
+    'rather crowd corn compare poem string bell depend meat rub tube famous dollar stream fear sight thin ' +
+    'triangle planet hurry chief colony clock mine tie enter major fresh search send yellow gun allow print ' +
+    'dead spot desert suit current lift rose arrive master track parent shore division sheet substance favor ' +
+    'connect post spend chord fat glad original share station dad bread charge proper bar offer segment slave ' +
+    'duck instant market degree populate chick dear enemy reply drink occur support speech nature range steam ' +
+    'motion path liquid log meant quotient teeth shell neck oxygen sugar death pretty skill women season ' +
+    'solution magnet silver thank branch match suffix especially fig afraid huge sister steel discuss forward ' +
+    'similar guide experience score apple bought led pitch coat mass card band rope slip win dream evening ' +
+    'condition feed tool total basic smell valley nor double seat continue block chart hat sell success company ' +
+    'subtract event particular deal swim term opposite wife shoe shoulder spread arrange camp invent cotton born ' +
+    'determine quart nine truck noise level chance gather shop stretch throw shine property column molecule ' +
+    'select wrong gray repeat require broad prepare salt nose plural anger claim continent ' +
+    'tea hen hint stain risen stir strain shy ant tan tin nest hearth thine signs sting tent rent tight ' +
+    'stare tray sheen agent stage hate rate gate sane siren stern niece sneer sentry eager nasty these').split(' ');
+  var CONTRACTIONS = "don't it's can't i'm you're we're isn't that's there's won't i've let's they're didn't".split(' ');
+
+  // --- The engine ----------------------------------------------------------------
+  // A drill is a list of tokens: a printing character, or (later drills) a key or chord name.
+  // Each input is what the board sent; t is its time in ms.
+  function engine(tokens) {
+    var e = { tokens: tokens.slice(), pos: 0, errors: 0, blocked: false, start: null, end: null };
+    e.done = function () { return e.pos >= e.tokens.length; };
+    e.input = function (sent, t) {
+      if (e.done()) return 'done';
+      t = t === undefined ? Date.now() : t;
+      if (e.start === null) e.start = t;
+      if (sent !== e.tokens[e.pos]) { e.errors++; e.blocked = true; return 'wrong'; }
+      e.pos++;
+      e.blocked = false;
+      if (!e.done()) return 'ok';
+      e.end = t;
+      return 'done';
+    };
+    // Accuracy: right presses over all presses. Words per minute: five tokens a word, first press to last.
+    e.stats = function () {
+      var n = e.tokens.length, ms = e.end === null ? 0 : e.end - e.start;
+      return { accuracy: n / (n + e.errors), wpm: ms > 0 ? (n / 5) / (ms / 60000) : 0, errors: e.errors, ms: ms };
+    };
+    return e;
+  }
+
+  // Lines of at most `width` tokens, not counting the space that ends one, broken after a space:
+  // [start, end) index pairs.
+  function wrap(tokens, width) {
+    var lines = [], start = 0, brk = -1;
+    for (var i = 0; i < tokens.length; i++) {
+      if (tokens[i] !== ' ' && i - start >= width && brk > start) { lines.push([start, brk]); start = brk; }
+      if (tokens[i] === ' ') brk = i + 1;
+    }
+    if (start < tokens.length) lines.push([start, tokens.length]);
+    return lines;
+  }
+
+  // --- Letter stages, from the Layout's rows ------------------------------------------
+
+  function letterOf(layout, pos) {
+    var t = Reach.key(layout, 0, pos).types;
+    return t && /^[a-z]$/.test(t) ? t : null;
+  }
+
+  // The home row is the row of the board description with the most home-row mods: letters that hold a modifier.
+  var STAGES = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+
+  function stages(layout, keys) {
+    var memo = STAGES && STAGES.get(layout);
+    if (!memo) { memo = build(layout, keys); if (STAGES) STAGES.set(layout, memo); }
+    return memo;
+  }
+
+  function build(layout, keys) {
+    var rows = {};
+    keys.forEach(function (k, pos) { (rows[k.row] = rows[k.row] || []).push(pos); });
+    var home = null, best = 0;
+    Object.keys(rows).forEach(function (r) {
+      var n = rows[r].filter(function (p) { return letterOf(layout, p) && Reach.key(layout, 0, p).mods.length; }).length;
+      if (n > best) { best = n; home = Number(r); }
+    });
+    function letters(r) { return (rows[r] || []).map(function (p) { return letterOf(layout, p); }).filter(Boolean); }
+    var h = home === null ? [] : letters(home), t = h.concat(letters(home - 1)), b = t.concat(letters(home + 1));
+    var all = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(function (c) { return Reach.reach(layout, c); });
+    var punct = [',', '.', ';', "'"].filter(function (c) { return Reach.reach(layout, c); });
+    var capsWord = !!Reach.reach(layout, 'Caps Word');
+    return [
+      { name: 'Home row', letters: h },
+      { name: 'Plus the top row', letters: t },
+      { name: 'Plus the bottom row', letters: b },
+      { name: 'All letters', letters: all },
+      { name: 'Capitals' + (punct.length ? ', punctuation ' + punct.join(' ') : '') + (capsWord ? ' and Caps Word' : ''), letters: all, capitals: true,
+        punct: punct, capsWord: capsWord }
+    ];
+  }
+
+  // A drill for stage n: random words that use only the stage's letters, filling LINES lines of WIDTH.
+  function generate(layout, keys, n, rng, width) {
+    var st = stages(layout, keys)[n];
+    rng = rng || Math.random;
+    width = width || WIDTH;
+    var ok = {};
+    st.letters.concat(st.capitals ? st.punct : []).forEach(function (c) { ok[c] = true; });
+    var fits = function (w) { return w.split('').every(function (c) { return ok[c]; }); };
+    var pool = WORDS.filter(fits).concat(st.capitals ? CONTRACTIONS.filter(fits) : []);
+    if (!pool.length) return [];
+    var has = function (c) { return st.punct && st.punct.indexOf(c) >= 0; };
+    var tokens = [], sentence = true;
+    for (;;) {
+      var w = pool[Math.floor(rng() * pool.length)];
+      if (st.capitals) {
+        if (/^i('|$)/.test(w)) w = 'I' + w.slice(1);
+        if (st.capsWord && w.length > 1 && /^[a-z]+$/.test(w) && rng() < 0.1) w = w.toUpperCase();
+        else if (sentence) w = w.charAt(0).toUpperCase() + w.slice(1);
+        sentence = false;
+        var r = rng();
+        if (r < 0.15 && has('.')) { w += '.'; sentence = true; }
+        else if (r < 0.25 && has(',')) w += ',';
+        else if (r < 0.3 && has(';')) w += ';';
+      }
+      var next = tokens.concat(tokens.length ? [' '] : [], w.split(''));
+      if (wrap(next, width).length > LINES) return tokens;
+      tokens = next;
+    }
+  }
+
+  function isCap(c) { return /^[A-Z]$/.test(c || ''); }
+
+  // The path to light for token i: the Reach path, except in a capitals word (two or more capitals),
+  // which starts with Caps Word and goes on with plain letters.
+  function hint(layout, tokens, i) {
+    var c = tokens[i];
+    if (isCap(c) && (isCap(tokens[i - 1]) || isCap(tokens[i + 1]))) {
+      var cw = Reach.reach(layout, 'Caps Word'), l = Reach.reach(layout, c.toLowerCase());
+      if (cw && l && isCap(tokens[i - 1]))
+        return { hold: l.hold, tap: l.tap, layer: l.layer, active: l.active, words: 'Caps Word is on: ' + l.words };
+      if (cw && l && !cw.hold.length)
+        return { hold: [], tap: cw.tap.concat(l.tap), layer: l.layer, active: l.active,
+          words: cw.words.replace(/\.\s.*/, '') + ' (Caps Word), then type the word: it comes out in capitals.' };
+    }
+    return Reach.reach(layout, c);
+  }
+
+  return { WIDTH: WIDTH, LINES: LINES, engine: engine, wrap: wrap, stages: stages, generate: generate, hint: hint };
+})();
 </script>
 
 <script>
@@ -815,7 +1039,7 @@ if (typeof module !== 'undefined') module.exports = Reach;
       if (r.hold) el('text', { 'class': 'hold', x: x + w / 2, y: y + h * 0.78 }, g).textContent = fit(r.hold, 9);
     });
     // Combos: their keys linked, with the result at the middle.
-    if (document.getElementById('show-combos').checked) {
+    if (!drill.on && document.getElementById('show-combos').checked) {
       Reach.combos(layout, state.active).forEach(function (c) {
         var pts = c.keys.map(function (p) { return spot(keys[p], 0.32, 0.32); });
         var g = el('g', { 'class': 'combo' }, svg);
@@ -882,9 +1106,99 @@ if (typeof module !== 'undefined') module.exports = Reach;
   search.addEventListener('keydown', function (e) { if (e.key === 'Escape') { search.value = ''; find(); search.blur(); } });
   document.getElementById('show-combos').addEventListener('change', draw);
 
+  // --- Drill: a menu picked from the keyboard, then three lines to type with the next key lit ---
+  var drill = { on: false, stage: 0, eng: null, lines: [], pic: true };
+  var stages = Drill.stages(layout, keys);
+  var dmenu = document.getElementById('drill-menu'), dtext = document.getElementById('drill-text');
+  var dstats = document.getElementById('drill-stats'), dhint = document.getElementById('drill-hint');
+  var MODKEYS = /^(Shift|Control|Alt|AltGraph|Meta|OS|Super|Hyper|CapsLock|NumLock|ScrollLock|Fn|Dead|Unidentified)$/;
+
+  function setMode(on) {
+    drill.on = on;
+    drill.eng = null;
+    document.body.classList.toggle('drilling', on);
+    document.getElementById('drill').hidden = !on;
+    document.getElementById('mode').textContent = on ? 'Drill' : 'Explore';
+    if (on) render(); else show(0);
+  }
+
+  function start(n) {
+    drill.stage = n;
+    var tokens = Drill.generate(layout, keys, n);
+    drill.lines = Drill.wrap(tokens, Drill.WIDTH);
+    drill.eng = Drill.engine(tokens);
+    render();
+  }
+
+  function render() {
+    dmenu.textContent = dtext.textContent = dstats.textContent = dhint.textContent = '';
+    document.body.classList.toggle('nopic', !drill.pic);
+    var e = drill.eng;
+    if (!e) {
+      html('div', '', 'Pick a stage: press its number (Enter repeats the last one).', dmenu);
+      var ol = html('ol', '', undefined, dmenu);
+      stages.forEach(function (st, i) {
+        var li = html('li', '', st.name + ' ', ol);
+        li.setAttribute('aria-current', i === drill.stage);
+        html('span', 'letters', st.letters.join(' ').toUpperCase(), li);
+      });
+      html('div', 'where', 'h: picture ' + (drill.pic ? 'on' : 'off') + ' · Esc: back to Explore. ' +
+        'In a drill: a wrong key holds you until you press the right one; Esc comes back here.', dmenu);
+      state.layer = 0; state.active = Reach.route(layout, 0); state.hl = null; state.pos = null;
+      draw();
+      return;
+    }
+    drill.lines.forEach(function (ln) {
+      var div = html('div', '', undefined, dtext);
+      for (var i = ln[0]; i < ln[1]; i++)
+        html('span', i < e.pos ? 'done' : i === e.pos ? 'cur' + (e.blocked ? ' bad' : '') : '', e.tokens[i], div);
+    });
+    if (e.done()) {
+      var st = e.stats();
+      dstats.textContent = 'Accuracy ' + Math.round(st.accuracy * 100) + '% · ' + Math.round(st.wpm) + ' wpm · ' +
+        st.errors + ' error' + (st.errors === 1 ? '' : 's') + '. Space or Enter: a new drill. Esc: pick a stage.';
+      state.hl = null;
+      draw();
+      return;
+    }
+    var p = Drill.hint(layout, e.tokens, e.pos);
+    dstats.textContent = stages[drill.stage].name + (e.errors ? ' · ' + e.errors + ' error' + (e.errors === 1 ? '' : 's') : '');
+    if (p) {
+      if (drill.pic) dhint.textContent = p.words;
+      state.layer = p.layer; state.active = p.active; state.hl = { hold: p.hold, tap: p.tap }; state.pos = null;
+    }
+    draw();
+  }
+
+  function drillKey(e) {
+    if (e.key === 'Escape') { if (drill.eng) { drill.eng = null; render(); } else setMode(false); return true; }
+    if (!drill.eng) {
+      var n = Number(e.key);
+      if (/^[1-9]$/.test(e.key) && n <= stages.length) start(n - 1);
+      else if (e.key === 'Enter') start(drill.stage);
+      else if (e.key === 'h') { drill.pic = !drill.pic; render(); }
+      else return false;
+      return true;
+    }
+    if (drill.eng.done()) {
+      if (e.key !== ' ' && e.key !== 'Enter') return false;
+      start(drill.stage);
+      return true;
+    }
+    if (MODKEYS.test(e.key)) return false;
+    // What the board sent: a character, or a chord (a home-row mod that fired instead of a letter).
+    var sent = e.ctrlKey || e.altKey || e.metaKey ? 'chord' : e.key.length === 1 ? e.key : null;
+    if (sent === null) return false;
+    drill.eng.input(sent, e.timeStamp);
+    render();
+    return true;
+  }
+
   document.addEventListener('keydown', function (e) {
+    if (drill.on) { if (drillKey(e)) e.preventDefault(); return; }
     if (e.target === search) return;
     if (e.key === '/') { e.preventDefault(); search.focus(); return; }
+    if (e.key === 'd') { e.preventDefault(); setMode(true); return; }
     var n = names.length;
     if (e.key === 'ArrowRight') show((state.layer + 1) % n);
     else if (e.key === 'ArrowLeft') show((state.layer + n - 1) % n);

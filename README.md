@@ -29,7 +29,7 @@ agent edits ──────────────────────�
 | Regenerate the Keymap after editing the Layout | `bin/go60-gen < config/go60.json > config/go60.keymap` |
 | Flash HEAD's CI build | `go60-flash` |
 | Flash a local file | `go60-flash <file.uf2>` |
-| See any layer, how to reach it, what each key sends; find where a character lives (the Trainer) | `go60-train --open` |
+| See any layer, how to reach it, what each key sends; find where a character lives; drill the letters (the Trainer) | `go60-train --open` |
 | Run the suite | `tests/run` |
 
 - Give `go60-import` the editor's `.keymap` too: it then proves `go60-gen` matches the editor.
@@ -39,6 +39,8 @@ agent edits ──────────────────────�
   - `--open` finds the Layout in the git checkout you are in, else in `${GO60_REPO:-~/rs/go60}`.
   - `--open` writes the page to `${XDG_CACHE_HOME:-~/.cache}/go60/trainer.html` and opens the browser.
   - Key positions come from `config/info.json`, the board's own description.
+  - Drill (`d` in Explore): pick a stage by its number; type three lines with the next key lit. `h` hides the picture; Esc goes back.
+  - Letter stages follow the Layout's rows: home row, plus top, plus bottom, all letters, then capitals and punctuation.
 - `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
 - Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
 - Releases are tagged by CI: each push to `main` that passes the build job (`tests/run` and firmware) gets the next `v<N>` (`.github/tag`).

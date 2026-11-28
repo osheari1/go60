@@ -203,6 +203,46 @@ check "Reach: combos on a layer, with their keys and result" \
   '[[ "$(reach "Reach.combos(layout, [0]).filter(c => c.tap == \"F1\").map(c => c.keys)")" == "[[1,13]]" ]] \
    && [[ "$(reach "Reach.combos(layout, [0, 13]).length")" == 0 ]]'
 
+# The Drill engine: tokens in, key presses in; position, errors and blocking out. Times are given, in ms.
+eng() { reach "(e => { $1; return [e.pos, e.errors, e.blocked, e.done()]; })(Drill.engine([\"a\", \"b\", \" \", \"c\"]))"; }
+check "Drill: a right key moves on" '[[ "$(eng "e.input(\"a\", 0)")" == "[1,0,false,false]" ]]'
+check "Drill: a wrong key blocks and counts one error" '[[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1)")" == "[1,1,true,false]" ]]'
+check "Drill: a blocked drill waits for the right key; each wrong key counts" \
+  '[[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1); e.input(\"c\", 2)")" == "[1,2,true,false]" ]] \
+   && [[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1); e.input(\"b\", 2)")" == "[2,1,false,false]" ]]'
+check "Drill: the last right key ends it, with accuracy and words per minute" \
+  '[[ "$(eng "[\"a\", \"x\", \"b\", \" \", \"c\"].forEach((k, i) => e.input(k, i * 3000))")" == "[4,1,false,true]" ]] \
+   && [[ "$(reach "(e => { [\"a\", \"x\", \"b\", \"c\", \"d\", \"e\"].forEach((k, i) => e.input(k, i * 3000)); return e.stats(); })(Drill.engine(\"abcde\".split(\"\")))" | jq -c "[.accuracy, .wpm]")" == "[0.8333333333333334,4]" ]]'
+check "Drill: input after the end changes nothing" '[[ "$(eng "\"ab c\".split(\"\").forEach(k => e.input(k, 0)); e.input(\"x\", 1)")" == "[4,0,false,true]" ]]'
+check "Drill: tokens wrap into lines at spaces" \
+  '[[ "$(reach "Drill.wrap(\"aa bb cc\".split(\"\"), 5)")" == "[[0,6],[6,8]]" ]] \
+   && [[ "$(reach "Drill.wrap(\"aaaaaa b\".split(\"\"), 3)")" == "[[0,7],[7,8]]" ]]'
+
+check "Drill: five letter stages, from the home row out" \
+  '[[ "$(reach "Drill.stages(layout, keys).map(s => s.letters.slice().sort().join(\"\"))")" \
+      == "[\"aeghinrsty\",\"abcdefghijlnorstuvy\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\"]" ]] \
+   && [[ "$(reach "Drill.stages(layout, keys)[4].punct.join(\"\")")" == "\",.;'\''\"" && "$(reach "Drill.stages(layout, keys)[4].capsWord")" == true ]]'
+# Swap G (home row) and Q (bottom row) in the Layout: the stages follow.
+jq '.layers[0][29] as $g | .layers[0][29] = .layers[0][38] | .layers[0][38] = $g' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/swap.html"
+check "Drill: each stage's letters come from the Layout's rows" \
+  '[[ "$(page="$T/swap.html" reach "Drill.stages(layout, keys)[0].letters.slice().sort().join(\"\")")" == "\"aehinqrsty\"" ]]'
+
+# A seeded random source, so the suite is repeatable.
+rng='(s => () => (s = (s * 16807) % 2147483647) / 2147483647)(42)'
+check "Drill: a letter drill is three lines of words that use only the stage's letters" \
+  '[[ "$(reach "(r => [0, 1, 2, 3].every(n => [...Array(20)].every(() => { const t = Drill.generate(layout, keys, n, r); const ok = Drill.stages(layout, keys)[n].letters.concat([\" \"]); return t.length > 100 && Drill.wrap(t, Drill.WIDTH).length == 3 && t.every(c => ok.includes(c)); })))($rng)")" == true ]]'
+check "Drill: the last stage has capitals, , . ; '\'' and Caps Word words" \
+  '[[ "$(reach "(r => { const t = [...Array(30)].map(() => Drill.generate(layout, keys, 4, r).join(\"\")).join(\" \"); return [/[A-Z][a-z]/.test(t), /,/.test(t), /\\./.test(t), /;/.test(t), /'\''/.test(t), /\\b[A-Z]{2,}\\b/.test(t)]; })($rng)")" == "[true,true,true,true,true,true]" ]]'
+check "Drill: every token a letter stage generates is reachable, with a hint" \
+  '[[ "$(reach "(r => [0, 1, 2, 3, 4].every(n => [...Array(30)].every(() => { const t = Drill.generate(layout, keys, n, r); return t.every((c, i) => Reach.reach(layout, c) && Drill.hint(layout, t, i)); })))($rng)")" == true ]]'
+check "Drill: the hint lights the key to tap and the key to hold" \
+  '[[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\"a\"], 0))")" == "[[],[32]]" ]] \
+   && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\"A\", \"n\"], 0))")" == "[[28],[32]]" ]]'
+check "Drill: a capitals word lights Caps Word, then plain letters" \
+  '[[ "$(reach "(t => [0, 1].map(i => (h => [h.hold, h.tap])(Drill.hint(layout, t, i))))([\"A\", \"N\"])")" == "[[[],[56,32]],[[],[25]]]" ]]'
+check "Drill: nothing is saved between sessions" '! grep -Eq "localStorage|sessionStorage|indexedDB|document\\.cookie" "$page"'
+
 # --- go60-flash -----------------------------------------------------------
 
 # Stubs: findmnt knows nothing; udisksctl "mounts" DEV_DIR/<label> at MNT_DIR/<label>.
