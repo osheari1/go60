@@ -31,3 +31,10 @@ Merge and branch rules were scattered across CLAUDE.md files, or missing. One fi
 - `CLAUDE.md:13` points to home "Branch work", which is gone. Move it to `branch.md`, keeping "Worktrees go under `.worktrees/`".
 - `go60-flash` needs a human at the keyboard (`CLAUDE.md:12`): `deploy.md` Apply is `ready-for-human` work. The agent never runs it.
 - Check `.scratch/release/` for release rules to put in `release.md`.
+
+## Comments
+
+- Operator, on PR #12:
+  - Drop "Worktrees go under `.worktrees/`". PR #10 removed it on purpose.
+  - Step files keep only rules go60 itself states. Rules from home's old Branch work are not moved.
+  - A file with any "Not defined" section is `Status: not defined`.

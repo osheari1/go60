@@ -14,4 +14,4 @@ Not defined.
 
 ## After merge
 
-- After a squash-merge: `git pull --ff-only` on `main`, then delete the local and remote branch.
+Not defined.
