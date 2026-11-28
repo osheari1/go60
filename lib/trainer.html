@@ -356,6 +356,8 @@ var Reach = (function () {
   function board(layout, keys) {
     var m = model(layout);
     m.keys = keys;
+    // Thumb keys are info.json labels ending T<n>; none found means the labels changed, so ranking would silently break.
+    if (!keys.some(function (k, i) { return thumb(m, i); })) throw new Error('Reach.board: no thumb keys in config/info.json (labels ending T<n>).');
     m.ways = {};
     m.paths = {};
   }

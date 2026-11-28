@@ -288,7 +288,9 @@ check "Drill: a stage with no words fails loud, naming the stage" \
 check "Drill: Tab toggles the picture, mid-drill too; drill keys still type" \
   '[[ "$(reach "[{key: \"Tab\"}, {key: \"h\"}, {key: \"a\", ctrlKey: true}, {key: \"Shift\"}, {key: \"A\", shiftKey: true}].map(Drill.read)")" == "[\"picture\",\"h\",\"chord\",null,\"A\"]" ]]'
 check "Drill: the picture key is never a token a drill asks for, and the board can send it" \
-  '[[ "$(reach "(r => Reach.reach(layout, Drill.PICTURE) && Drill.stages(layout, keys).every((s, n) => [...Array(10)].every(() => !Drill.generate(layout, keys, n, r).includes(Drill.read({key: Drill.PICTURE})) )))($rng)")" == true ]]'
+  '[[ "$(reach "(r => Reach.reach(layout, Drill.PICTURE) && Drill.stages(layout, keys).every((s, n) => [...Array(10)].every(() => Drill.generate(layout, keys, n, r).every(t => t !== Drill.PICTURE && t !== \"\\t\") )))($rng)")" == true ]]'
+check "Reach: board() fails loud when info.json has no thumb keys" \
+  '[[ "$(reach "(() => { try { Reach.board(layout, keys.map(k => Object.assign({}, k, {label: k.label.replace(/T(\\d+)$/, \"X\$1\")}))); return \"no error\"; } catch (e) { return e.message; } })()")" == *thumb* ]]'
 check "Drill: nothing is saved between sessions" '! grep -Eq "localStorage|sessionStorage|indexedDB|document\\.cookie" "$page"'
 
 # --- go60-flash -----------------------------------------------------------
