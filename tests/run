@@ -152,6 +152,57 @@ check "Reach: a pass-through key shows what it falls through to" \
   '[[ "$(reach "(k => [k.through, k.tap])(Reach.key(layout, 15, 16))")" == "[\"Mouse\",\"$(reach "Reach.key(layout, 14, 16).tap" | jq -r .)\"]" ]] \
    && [[ "$(reach "Reach.key(layout, 12, 50).through")" == "\"HRM_WinLinx\"" ]]'
 
+# Reach answers "how do I produce this output?" as the keys to hold and the keys to tap, on HRM_WinLinx.
+path() { reach "(p => p && [p.hold, p.tap])(Reach.reach(layout, $1))"; }
+check "Reach: a lowercase letter is one tap" '[[ "$(path "\"a\"")" == "[[],[32]]" ]]'
+check "Reach: a symbol comes from a thumb hold" '[[ "$(path "\"{\"")" == "[[59],[14]]" ]]'
+check "Reach: a function key comes from its combo" \
+  '[[ "$(path "\"F1\"")" == "[[],[1,13]]" ]] && [[ "$(reach "!!Reach.reach(layout, \"F1\").combo")" == true ]]'
+check "Reach: a modifier comes from a home-row hold" '[[ "$(path "\"Left Ctrl\"")" == "[[27],[]]" ]]'
+check "Reach: a capital comes from a cross-hand Shift" '[[ "$(path "\"A\"")" == "[[28],[32]]" ]]'
+check "Reach: a key found only on Magic" \
+  '[[ "$(path "\"Bootloader\"")" == "[[36],[12]]" ]] && [[ "$(reach "Reach.reach(layout, \"Bootloader\").layer")" == 18 ]]'
+check "Reach: a chord on a thumb layer" \
+  '[[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").map(p => p.hold.length + \",\" + p.tap.length)[0]")" == "\"1,1\"" ]] \
+   && [[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").some(p => p.hold == 54 && p.tap == 15)")" == true ]]'
+check "Reach: an output the board cannot make is null" '[[ "$(path "\"no such key\"")" == null ]]'
+check "Reach: the path says in words what to do" \
+  'reach "Reach.reach(layout, \"{\").words" | grep -q "Hold ␣ (Symbol), then tap {"'
+
+jq 'walk(if type == "string" then gsub("TKZ"; "ZZZ") | gsub("HRM"; "QQQ") | gsub("thumb|space"; "tt") else . end)' \
+  "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/names.html"
+check "Reach: reads hold-taps and macros by structure, not by name" \
+  '[[ "$(page="$T/names.html" path "\"A\"")" == "[[28],[32]]" && "$(page="$T/names.html" path "\"{\"")" == "[[59],[14]]" ]]'
+
+# Magic is held from the base and from Keypad. Make one of its keys pass-through: each route falls to its own layer.
+jq '.layers[18][9] = {"value": "&trans", "params": []}' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/routes.html"
+check "Reach: a pass-through key falls to the next lower active layer, on each route" \
+  '[[ "$(page="$T/routes.html" reach "Reach.ways(layout, 18).filter(w => w.how == \"hold\" && w.base == 0).map(w => (k => [w.hold, k.through, k.tap])(Reach.key(layout, 18, 9, w.active)))")" \
+      == "[[[36],\"HRM_WinLinx\",\"9\"],[[47,36],\"Keypad\",\"F9\"],[[55,36],\"Keypad\",\"F9\"]]" ]]'
+
+check "Reach: each layer says how to reach it" \
+  '[[ "$(reach "Reach.ways(layout, 13)[0].hold")" == "[59]" ]] \
+   && [[ "$(reach "Reach.layers(layout).every(l => l.index == 0 || Reach.ways(layout, l.index).length > 0)")" == true ]]'
+
+check "Reach: the three base modes, switched on Magic" \
+  '[[ "$(reach "Reach.bases(layout)")" == "[0,1,2]" ]] \
+   && [[ "$(reach "(w => [w.how, w.hold, w.tap])(Reach.ways(layout, 1)[0])")" == "[\"switch\",[36],50]" ]]'
+
+check "Reach: every layer has a note; per-finger notes explain home-row mods" \
+  '[[ "$(reach "Reach.layers(layout).every(l => Reach.note(layout, l.index).length > 20)")" == true ]] \
+   && reach "Reach.note(layout, 6)" | grep -qi "home-row" \
+   && reach "Reach.note(layout, 6)" | grep -qi "cross-hand" \
+   && reach "Reach.note(layout, 6)" | grep -qi "stacked" \
+   && reach "Reach.note(layout, 6)" | grep -qi "same-hand"'
+
+check "Reach: Magic warns about its bootloader, reset and Bluetooth-clear keys" \
+  'reach "Reach.note(layout, 18)" | grep -q "Careful" \
+   && [[ "$(reach "[12, 24, 10, 11].every(p => Reach.key(layout, 18, p).danger)")" == true ]]'
+
+check "Reach: combos on a layer, with their keys and result" \
+  '[[ "$(reach "Reach.combos(layout, [0]).filter(c => c.tap == \"F1\").map(c => c.keys)")" == "[[1,13]]" ]] \
+   && [[ "$(reach "Reach.combos(layout, [0, 13]).length")" == 0 ]]'
+
 # --- go60-flash -----------------------------------------------------------
 
 # Stubs: findmnt knows nothing; udisksctl "mounts" DEV_DIR/<label> at MNT_DIR/<label>.

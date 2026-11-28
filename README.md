@@ -29,7 +29,7 @@ agent edits ──────────────────────�
 | Regenerate the Keymap after editing the Layout | `bin/go60-gen < config/go60.json > config/go60.keymap` |
 | Flash HEAD's CI build | `go60-flash` |
 | Flash a local file | `go60-flash <file.uf2>` |
-| See any layer, and what each key sends (the Trainer) | `go60-train --open` |
+| See any layer, how to reach it, what each key sends; find where a character lives (the Trainer) | `go60-train --open` |
 | Run the suite | `tests/run` |
 
 - Give `go60-import` the editor's `.keymap` too: it then proves `go60-gen` matches the editor.
