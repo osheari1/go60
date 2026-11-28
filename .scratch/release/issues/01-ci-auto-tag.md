@@ -8,7 +8,7 @@ Target repo: `~/rs/go60`; read its `CLAUDE.md` and `README.md` first. One pull r
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A `tag` job in `.github/workflows/build.yml` runs only on pushes to `main`, and only after the job that runs `tests/run` passes.
 - [x] It tags `v<N+1>`, where `<N>` is the highest existing `v<N>` tag on the remote.
@@ -24,3 +24,5 @@ Target repo: `~/rs/go60`; read its `CLAUDE.md` and `README.md` first. One pull r
 - Out of scope: bumping cfg automatically.
 
 ## Comments
+
+- Closed by RALPH: Added .github/tag and a tag job in build.yml (needs build, push to main only, contents: write in that job only); README notes CI tagging and manual cfg pkgver bump; suite covers next-tag and rerun.
