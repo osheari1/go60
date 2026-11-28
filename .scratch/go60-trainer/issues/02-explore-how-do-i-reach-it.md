@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Reach module answers "how do I produce this output?" with the keys to hold and the key or keys to tap, on the base mode `HRM_WinLinx`.
 - [x] It resolves thumb layer holds, home-row mods, shifted keys, combos and pass-through keys.
@@ -32,3 +32,5 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - Want: a route through a plain layer key names the key, like thumb routes do ("Hold ⌫ (Cursor)"), not just "Hold Keypad".
   - Red first: a suite check that `Reach.paths(layout, 'Ctrl+Z')[0]` holds the `Cursor` thumb, and one for the plain-key wording. See them fail before changing `lib/trainer.html`.
   - Tick every box above that the code meets.
+
+- Closed by RALPH: Review fixes in 0a0f983: Reach.board(layout, keys) takes the board's key positions from config/info.json. Thumb keys are found by their info.json label. Among equal-length routes, a thumb layer-hold now beats a plain layer key, so Ctrl+Z gives 'Hold ⌫ (Cursor), then tap ⌃Z'. A route through a plain layer key names the key by place: 'Hold the right-hand key in row 4, column 6 (Keypad)'. Two red suite checks were added first. tests/run: all passed. Still needs a human: merge, tag go60, bump cfg's go60 component.
