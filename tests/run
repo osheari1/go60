@@ -219,7 +219,7 @@ check "Drill: tokens wrap into lines at spaces" \
    && [[ "$(reach "Drill.wrap(\"aaaaaa b\".split(\"\"), 3)")" == "[[0,7],[7,8]]" ]]'
 
 check "Drill: five letter stages, from the home row out" \
-  '[[ "$(reach "Drill.stages(layout, keys).map(s => s.letters.slice().sort().join(\"\"))")" \
+  '[[ "$(reach "Drill.stages(layout, keys).slice(0, 5).map(s => s.letters.slice().sort().join(\"\"))")" \
       == "[\"aeghinrsty\",\"abcdefghijlnorstuvy\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\"]" ]] \
    && [[ "$(reach "Drill.stages(layout, keys)[4].punct.join(\"\")")" == "\",.;'\''\"" && "$(reach "Drill.stages(layout, keys)[4].capsWord")" == true ]]'
 # Swap G (home row) and Q (bottom row) in the Layout: the stages follow.
@@ -241,6 +241,22 @@ check "Drill: the hint lights the key to tap and the key to hold" \
    && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\"A\", \"n\"], 0))")" == "[[28],[32]]" ]]'
 check "Drill: a capitals word lights Caps Word, then plain letters" \
   '[[ "$(reach "(t => [0, 1].map(i => (h => [h.hold, h.tap])(Drill.hint(layout, t, i))))([\"A\", \"N\"])")" == "[[[],[56,32]],[[],[25]]]" ]]'
+check "Drill: two Symbol stages follow the letters" \
+  '[[ "$(reach "Drill.stages(layout, keys).slice(5).map(s => [s.layer, s.symbols.length])")" == "[[13,32],[13,32]]" ]]'
+check "Drill: the Symbol stages draw every symbol the Reach module finds on Symbol, and nothing else" \
+  '[[ "$(reach "(s => { const on = layout.layers[13].map((b, p) => Reach.key(layout, 13, p).types).filter(t => t && t.length == 1 && /[^a-z0-9 ]/i.test(t)); return on.every(c => s.includes(c)) && s.every(c => on.includes(c)); })(Drill.stages(layout, keys)[5].symbols)")" == true ]]'
+check "Drill: stage 1 of Symbol is short random groups of its symbols" \
+  '[[ "$(reach "(r => [...Array(20)].every(() => { const t = Drill.generate(layout, keys, 5, r), s = Drill.stages(layout, keys)[5].symbols; const g = t.join(\"\").split(\" \"); return Drill.wrap(t, Drill.WIDTH).length == 3 && g.every(x => x.length >= 2 && x.length <= 5 && x.split(\"\").every(c => s.includes(c))); }))($rng)")" == true ]]'
+check "Drill: stage 2 of Symbol is built-in shell and Python lines" \
+  '[[ "$(reach "(r => { const t = Drill.generate(layout, keys, 6, r).join(\"\"); return [Drill.wrap(t.split(\"\"), Drill.WIDTH).length, /[a-z]/.test(t), /[(){}\\[\\]|$=]/.test(t)]; })($rng)")" == "[3,true,true]" ]]'
+check "Drill: every token the Symbol stages generate is reachable, with a hint" \
+  '[[ "$(reach "(r => [5, 6].every(n => [...Array(30)].every(() => { const t = Drill.generate(layout, keys, n, r), st = Drill.stages(layout, keys)[n]; return t.length > 50 && t.every((c, i) => Reach.reach(layout, c) && Drill.hint(layout, t, i, st)); })))($rng)")" == true ]]'
+check "Drill: in the Symbol stages a symbol is hinted through Symbol, even where a base key sends it" \
+  '[[ "$(reach "(st => [\",\", \"(\", \"?\"].map(c => (h => [h.hold, h.tap, h.layer])(Drill.hint(layout, [c], 0, st))))(Drill.stages(layout, keys)[5])")" == "[[[59],[1],13],[[59],[2],13],[[59],[17],13]]" ]] \
+   && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\",\"], 0))")" == "[[],[22]]" ]] \
+   && [[ "$(reach "(r => [5, 6].every(n => { const st = Drill.stages(layout, keys)[n], t = Drill.generate(layout, keys, n, r); return t.every((c, i) => !st.symbols.includes(c) || (h => h.layer == 13 && h.hold.join() == \"59\")(Drill.hint(layout, t, i, st))); }))($rng)")" == true ]]'
+check "Drill: a symbol counts by what the board sent, whichever path sent it" \
+  '[[ "$(reach "(e => [e.input(\"(\", 0), e.input(\")\", 1)])(Drill.engine([\"(\", \")\"]))")" == "[\"ok\",\"done\"]" ]]'
 check "Drill: nothing is saved between sessions" '! grep -Eq "localStorage|sessionStorage|indexedDB|document\\.cookie" "$page"'
 
 # --- go60-flash -----------------------------------------------------------

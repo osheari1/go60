@@ -821,6 +821,41 @@ var Drill = (function () {
     'select wrong gray repeat require broad prepare salt nose plural anger claim continent ' +
     'tea hen hint stain risen stir strain shy ant tan tin nest hearth thine signs sting tent rent tight ' +
     'stare tray sheen agent stage hate rate gate sane siren stern niece sneer sentry eager nasty these').split(' ');
+  // Real lines for the second Symbol stage: shell, then Python. Built in, like the words.
+  var CODE = [
+    'ls -la ~/rs | grep -v "^d"',
+    'cd "$(git rev-parse --show-toplevel)" && make',
+    'git log --oneline -n 10 | cut -c1-7',
+    'find . -name "*.py" -exec wc -l {} +',
+    'echo "${HOME}/bin:$PATH" > /tmp/path.txt',
+    'for f in *.md; do echo "$f"; done',
+    'grep -rn "TODO" src/ 2>/dev/null || true',
+    'tar -czf backup.tar.gz ~/notes && ls -lh *.gz',
+    'export EDITOR=vim; [[ -n "$EDITOR" ]] && echo ok',
+    'jq \'.layers[0] | length\' config/go60.json',
+    'sed -i \'s/foo/bar/g\' a.txt; cat a.txt',
+    'ps aux | awk \'{print $2, $11}\' | sort -n',
+    'curl -s localhost:8080/api?q=1 | jq .',
+    'x=$((x + 1)); echo "count: $x"',
+    'ssh -p 2222 user@host \'df -h /\'',
+    'cp -r src/ dst/ && diff -r src dst',
+    'def add(a, b):',
+    'return {"name": name, "tags": [t for t in tags]}',
+    'if x is not None and len(xs) > 0:',
+    'print(f"{i:>3}: {line!r}")',
+    'with open(path, "w") as f: f.write(text)',
+    'import os, sys; args = sys.argv[1:]',
+    'xs = [n * 2 for n in range(10) if n % 3 == 0]',
+    'd = {k: v for k, v in pairs.items()}',
+    'class Point: x: int = 0; y: int = 0',
+    'except (KeyError, ValueError) as e: raise',
+    'total += price * qty  # with tax',
+    'assert a[-1] == b[::-1][0], "mismatch"',
+    'lambda s: s.strip().lower() != ""',
+    '@dataclass(frozen=True)',
+    'ok = x & mask | (y ^ 0xff) << 2',
+    'path = os.path.join(root, "*.txt")'
+  ];
   var CONTRACTIONS = "don't it's can't i'm you're we're isn't that's there's won't i've let's they're didn't".split(' ');
 
   // --- The engine ----------------------------------------------------------------
@@ -889,6 +924,7 @@ var Drill = (function () {
     var all = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(function (c) { return Reach.reach(layout, c); });
     var punct = [',', '.', ';', "'"].filter(function (c) { return Reach.reach(layout, c); });
     var capsWord = !!Reach.reach(layout, 'Caps Word');
+    var sym = symbolStages(layout);
     return [
       { name: 'Home row', letters: h },
       { name: 'Plus the top row', letters: t },
@@ -896,7 +932,51 @@ var Drill = (function () {
       { name: 'All letters', letters: all },
       { name: 'Capitals' + (punct.length ? ', punctuation ' + punct.join(' ') : '') + (capsWord ? ' and Caps Word' : ''), letters: all, capitals: true,
         punct: punct, capsWord: capsWord }
+    ].concat(sym);
+  }
+
+  // --- Symbol stages, from what Reach finds on the Symbol layer ------------------------
+
+  // The path through `layer` with no modifier held: the one to teach for a symbol on it.
+  function through(layout, c, layer) {
+    return Reach.paths(layout, c, 0).filter(function (p) { return p.layer === layer && !p.mods.length; })[0] || null;
+  }
+
+  function symbolStages(layout) {
+    var n = layout.layer_names.indexOf('Symbol');
+    if (n < 0) return [];
+    var symbols = [];
+    layout.layers[n].forEach(function (b, pos) {
+      var k = Reach.key(layout, n, pos);
+      if (k.kind === 'trans' || !k.types || k.types.length !== 1 || /[a-z0-9 ]/i.test(k.types)) return;
+      if (symbols.indexOf(k.types) < 0 && through(layout, k.types, n)) symbols.push(k.types);
+    });
+    if (!symbols.length) return [];
+    return [
+      { name: 'Symbols: random groups', letters: [], symbols: symbols, layer: n, groups: true },
+      { name: 'Symbols: shell and Python lines', letters: [], symbols: symbols, layer: n, code: true }
     ];
+  }
+
+  // Pieces joined by spaces, as many as fill LINES lines of `width`.
+  function fill(next, width) {
+    var tokens = [];
+    for (;;) {
+      var t = tokens.concat(tokens.length ? [' '] : [], next().split(''));
+      if (wrap(t, width).length > LINES) return tokens;
+      tokens = t;
+    }
+  }
+
+  function symbolDrill(layout, st, rng, width) {
+    var pick = function (xs) { return xs[Math.floor(rng() * xs.length)]; };
+    if (st.groups) return fill(function () {
+      var g = '', len = 2 + Math.floor(rng() * 4);
+      while (g.length < len) g += pick(st.symbols);
+      return g;
+    }, width);
+    var lines = CODE.filter(function (l) { return l.split('').every(function (c) { return Reach.reach(layout, c); }); });
+    return lines.length ? fill(function () { return pick(lines); }, width) : [];
   }
 
   // A drill for stage n: random words that use only the stage's letters, filling LINES lines of WIDTH.
@@ -904,6 +984,7 @@ var Drill = (function () {
     var st = stages(layout, keys)[n];
     rng = rng || Math.random;
     width = width || WIDTH;
+    if (st.symbols) return symbolDrill(layout, st, rng, width);
     var ok = {};
     st.letters.concat(st.capitals ? st.punct : []).forEach(function (c) { ok[c] = true; });
     var fits = function (w) { return w.split('').every(function (c) { return ok[c]; }); };
@@ -931,10 +1012,12 @@ var Drill = (function () {
 
   function isCap(c) { return /^[A-Z]$/.test(c || ''); }
 
-  // The path to light for token i: the Reach path, except in a capitals word (two or more capitals),
-  // which starts with Caps Word and goes on with plain letters.
-  function hint(layout, tokens, i) {
+  // The path to light for token i in stage st: the Reach path, except in a capitals word (two or more capitals),
+  // which starts with Caps Word and goes on with plain letters, and in a Symbol stage, where a symbol
+  // goes through the Symbol layer even if a base key also sends it.
+  function hint(layout, tokens, i, st) {
     var c = tokens[i];
+    if (st && st.symbols && st.symbols.indexOf(c) >= 0) return through(layout, c, st.layer);
     if (isCap(c) && (isCap(tokens[i - 1]) || isCap(tokens[i + 1]))) {
       var cw = Reach.reach(layout, 'Caps Word'), l = Reach.reach(layout, c.toLowerCase());
       if (cw && l && isCap(tokens[i - 1]))
@@ -1140,7 +1223,7 @@ var Drill = (function () {
       stages.forEach(function (st, i) {
         var li = html('li', '', st.name + ' ', ol);
         li.setAttribute('aria-current', i === drill.stage);
-        html('span', 'letters', st.letters.join(' ').toUpperCase(), li);
+        html('span', 'letters', st.symbols ? st.symbols.join(' ') : st.letters.join(' ').toUpperCase(), li);
       });
       html('div', 'where', 'h: picture ' + (drill.pic ? 'on' : 'off') + ' · Esc: back to Explore. ' +
         'In a drill: a wrong key holds you until you press the right one; Esc comes back here.', dmenu);
@@ -1161,7 +1244,7 @@ var Drill = (function () {
       draw();
       return;
     }
-    var p = Drill.hint(layout, e.tokens, e.pos);
+    var p = Drill.hint(layout, e.tokens, e.pos, stages[drill.stage]);
     dstats.textContent = stages[drill.stage].name + (e.errors ? ' · ' + e.errors + ' error' + (e.errors === 1 ? '' : 's') : '');
     if (p) {
       if (drill.pic) dhint.textContent = p.words;
