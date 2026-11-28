@@ -965,26 +965,38 @@ var Drill = (function () {
     ].concat(sym);
   }
 
-  // --- Symbol stages, from what Reach finds on the Symbol layer ------------------------
+  // --- Symbol stages, from the layer that carries the symbols ------------------------
 
   // The path through `layer` with no modifier held: the one to teach for a symbol on it.
   function through(layout, c, layer) {
     return Reach.paths(layout, c, 0).filter(function (p) { return p.layer === layer && !p.mods.length; })[0] || null;
   }
 
-  function symbolStages(layout) {
-    var n = layout.layer_names.indexOf('Symbol');
-    if (n < 0) return [];
+  // The symbols layer n's own keys send, each reachable through n with no modifier held.
+  function symbolsOn(layout, n) {
     var symbols = [];
     layout.layers[n].forEach(function (b, pos) {
       var k = Reach.key(layout, n, pos);
       if (k.kind === 'trans' || !k.types || k.types.length !== 1 || /[a-z0-9 ]/i.test(k.types)) return;
       if (symbols.indexOf(k.types) < 0 && through(layout, k.types, n)) symbols.push(k.types);
     });
-    if (!symbols.length) return [];
+    return symbols;
+  }
+
+  // The Symbol layer, whatever it is named: the layer, not a base mode, whose keys send the most symbols,
+  // and more than the base does. Two stages either way; with no such layer, they fail loud when started.
+  function symbolStages(layout) {
+    var bases = Reach.bases(layout), n = null, symbols = symbolsOn(layout, 0);
+    for (var l = 0; l < layout.layers.length; l++) {
+      if (bases.indexOf(l) >= 0) continue;
+      var s = symbolsOn(layout, l);
+      if (s.length > symbols.length) { n = l; symbols = s; }
+    }
+    var missing = n === null ? 'no layer sends more symbols than the base does, so there is no Symbol layer to drill.' : null;
+    if (missing) symbols = [];
     return [
-      { name: 'Symbols: random groups', letters: [], symbols: symbols, layer: n, groups: true },
-      { name: 'Symbols: shell and Python lines', letters: [], symbols: symbols, layer: n, code: true }
+      { name: 'Symbols: random groups', letters: [], symbols: symbols, layer: n, groups: true, missing: missing },
+      { name: 'Symbols: shell and Python lines', letters: [], symbols: symbols, layer: n, code: true, missing: missing }
     ];
   }
 
@@ -999,6 +1011,8 @@ var Drill = (function () {
   }
 
   function symbolDrill(layout, st, rng, width) {
+    if (st.missing) throw new Error(st.name + ': ' + st.missing);
+    if (!Reach.reach(layout, ' ')) throw new Error(st.name + ': this Layout has no Space to put between pieces.');
     var pick = function (xs) { return xs[Math.floor(rng() * xs.length)]; };
     if (st.groups) return fill(function () {
       var g = '', len = 2 + Math.floor(rng() * 4);

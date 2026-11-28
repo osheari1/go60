@@ -41,8 +41,9 @@ agent edits ──────────────────────�
   - Key positions come from `config/info.json`, the board's own description.
   - Drill (`d` in Explore): pick a stage by its number; type three lines with the next key lit. Tab hides or shows the picture, on the stage picker or mid-drill; Esc goes back.
   - Letter stages follow the Layout's rows: home row, plus top, plus bottom, all letters, then capitals and punctuation.
-  - Symbol stages: short random groups of the symbols on `Symbol`, then real shell and Python lines.
-    The hint lights the `Symbol` path; any path that sends the right character counts.
+  - Symbol stages: short random groups of the symbols on the Symbol layer, then real shell and Python lines.
+    The Symbol layer is the one, not a base mode, whose keys send the most symbols (today `Symbol`).
+    The hint lights the path through it; any path that sends the right character counts.
 - `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
 - Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
 - Releases are tagged by CI: each push to `main` that passes the build job (`tests/run` and firmware) gets the next `v<N>` (`.github/tag`).

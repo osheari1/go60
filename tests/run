@@ -260,6 +260,24 @@ check "Drill: in the Symbol stages a symbol is hinted through Symbol, even where
   '[[ "$(reach "(st => [\",\", \"(\", \"?\"].map(c => (h => [h.hold, h.tap, h.layer])(Drill.hint(layout, [c], 0, st))))(Drill.stages(layout, keys)[5])")" == "[[[59],[1],13],[[59],[2],13],[[59],[17],13]]" ]] \
    && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\",\"], 0))")" == "[[],[22]]" ]] \
    && [[ "$(reach "(r => [5, 6].every(n => { const st = Drill.stages(layout, keys)[n], t = Drill.generate(layout, keys, n, r); return t.every((c, i) => !st.symbols.includes(c) || (h => h.layer == 13 && h.hold.join() == \"59\")(Drill.hint(layout, t, i, st))); }))($rng)")" == true ]]'
+jq '.layer_names[13] = "Glyphs"' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/glyphs.html"
+check "Drill: the Symbol stages find their layer when it is renamed" \
+  '[[ "$(page="$T/glyphs.html" reach "Drill.stages(layout, keys).slice(5).map(s => [s.layer, s.symbols.length])")" == "[[13,32],[13,32]]" ]]'
+# The Symbol layer emptied: no layer carries more symbols than the base, so there is none to drill.
+jq '.layers[13] |= map({value: "&trans", params: []})' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/nosym.html"
+check "Drill: with no symbol layer the Symbol stages are still listed and fail loud" \
+  '[[ "$(page="$T/nosym.html" reach "Drill.stages(layout, keys).length")" == 7 ]] \
+   && [[ "$(page="$T/nosym.html" reach "[5, 6].map(n => { try { Drill.generate(layout, keys, n); return \"no error\"; } catch (e) { return e.message; } }).join(\" | \")")" == *"Symbols: random groups"*"no layer"*"Symbols: shell"*"no layer"* ]]'
+# E and S made F13: every built-in line has an E or an S, so none can be sent.
+jq '(.. | objects | select(.value == "E" or .value == "S") | .value) = "F13"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/noes.html"
+check "Drill: Symbol lines with no line this Layout can send fail loud, naming the stage" \
+  '[[ "$(page="$T/noes.html" reach "(() => { try { Drill.generate(layout, keys, 6); return \"no error\"; } catch (e) { return e.message; } })()")" == *"Symbols: shell and Python lines: no built-in line"* ]]'
+# Every Space made F13: the pieces of a Symbol drill have nothing to go between them.
+jq '(.. | objects | select(.value == "SPACE") | .value) = "F13"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/nospace.html"
+check "Drill: Symbol drills with no Space fail loud, naming the stage" \
+  '[[ "$(page="$T/nospace.html" reach "[5, 6].map(n => { try { Drill.generate(layout, keys, n); return \"no error\"; } catch (e) { return e.message; } }).join(\" | \")")" == *"random groups: "*"Space"*"Python lines: "*"Space"* ]]'
 check "Drill: a symbol counts by what the board sent, whichever path sent it" \
   '[[ "$(reach "(e => [e.input(\"(\", 0), e.input(\")\", 1)])(Drill.engine([\"(\", \")\"]))")" == "[\"ok\",\"done\"]" ]]'
 # Every home-row letter made Q: no common word fits the Home row stage.
