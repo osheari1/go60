@@ -12,4 +12,4 @@ Covers: automated pass/fail checks, local and on the PR.
 ## On the PR
 
 - `.github/workflows/build.yml` job `build` runs on every push and pull request.
-  - It runs `tests/run`, then builds the firmware (`go60.uf2`).
+  - It runs `tests/run`, then builds the Firmware image (`go60.uf2`).

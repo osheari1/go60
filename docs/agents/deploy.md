@@ -4,8 +4,6 @@ Status: not defined
 
 Covers: changing a live system to match `main` or a release.
 
-The live system is the Go60 itself: firmware flashed to both halves.
-
 ## Apply
 
 - `go60-flash`: flashes HEAD's CI build. `go60-flash <file.uf2>` flashes a local file.
