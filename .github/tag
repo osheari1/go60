@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# .github/tag: tag HEAD with the next v<N> on origin and push it; print the tag.
+# If HEAD already has a v<N> tag on origin, print that and do nothing (reruns are safe).
+set -euo pipefail
+
+head=$(git rev-parse HEAD)
+# "<sha> refs/tags/vN" lines; annotated tags also give a peeled "refs/tags/vN^{}" line.
+remote=$(git ls-remote --tags origin 'v*' | sed -nE 's#^([0-9a-f]+)\trefs/tags/(v[0-9]+)(\^\{\})?$#\1 \2#p')
+
+have=$(awk -v h="$head" '$1 == h { print $2; exit }' <<<"$remote")
+if [[ -n "$have" ]]; then echo "$have"; exit 0; fi
+
+n=$(awk '{ sub(/^v/, "", $2); if ($2 + 0 > max) max = $2 + 0 } END { print max + 0 }' <<<"$remote")
+tag="v$((n + 1))"
+git tag "$tag" "$head"
+git push -q origin "refs/tags/$tag"
+echo "$tag"

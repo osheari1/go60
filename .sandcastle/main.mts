@@ -19,6 +19,8 @@ await run({
   // sandbox at the start of each iteration, so the agent always sees fresh data.
   promptFile: "./.sandcastle/prompt.md",
 
+  promptArgs: { TICKET: process.env.TICKET ?? "" },
+
   // Maximum number of iterations (agent invocations) to run in a session.
   // Each iteration works on a single issue. Increase this to process more issues
   // per run, or set it to 1 for a single-shot mode.
