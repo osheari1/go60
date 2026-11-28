@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Stage 1: short random groups drawn from the symbols the Reach module finds on `Symbol`.
 - [x] Stage 2: built-in shell and Python lines.
@@ -25,3 +25,5 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
   - README says "symbols on `Symbol`": describe it without the name, or say the name is today's.
   - Red first: a suite check with that layer renamed, and one for the missing-layer error; see them fail first.
   - Tick every box above that the code meets.
+
+- Closed by RALPH: Symbol layer now found by structure: the non-base layer whose keys send the most symbols, more than the base. Renamed layer still gives both stages. No Symbol layer, no built-in line that fits, or no Space: the stage stays listed and starting it shows a visible error that names the stage. README no longer depends on the name. Red-first suite checks for the renamed and missing cases. Still needs a human: merge, tag go60, bump cfg component.
