@@ -10,13 +10,13 @@ Target repo: `~/rs/go60`; read its `CLAUDE.md` and `README.md` first. One pull r
 
 **Status:** ready-for-agent
 
-- [ ] A `tag` job in `.github/workflows/build.yml` runs only on pushes to `main`, and only after the job that runs `tests/run` passes.
-- [ ] It tags `v<N+1>`, where `<N>` is the highest existing `v<N>` tag on the remote.
-- [ ] It does nothing if the commit already has a `v<N>` tag, so a rerun makes no second tag.
-- [ ] It has `contents: write` in that job only; the rest of the workflow keeps read access.
-- [ ] Pull requests and branch pushes never tag.
-- [ ] README says releases are tagged by CI and that the cfg bump (`pkgver`) is still by hand.
-- [ ] The suite prints `all passed`.
+- [x] A `tag` job in `.github/workflows/build.yml` runs only on pushes to `main`, and only after the job that runs `tests/run` passes.
+- [x] It tags `v<N+1>`, where `<N>` is the highest existing `v<N>` tag on the remote.
+- [x] It does nothing if the commit already has a `v<N>` tag, so a rerun makes no second tag.
+- [x] It has `contents: write` in that job only; the rest of the workflow keeps read access.
+- [x] Pull requests and branch pushes never tag.
+- [x] README says releases are tagged by CI and that the cfg bump (`pkgver`) is still by hand.
+- [x] The suite prints `all passed`.
 
 ## Notes
 
