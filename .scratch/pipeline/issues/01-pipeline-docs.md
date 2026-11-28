@@ -1,6 +1,6 @@
 # Pipeline step docs
 
-Status: ready-for-agent
+Status: resolved
 
 ## What
 
