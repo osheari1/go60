@@ -49,6 +49,6 @@ Pick the highest-priority open issue that is not blocked by another open issue.
 
 # Done
 
-When all actionable issues are complete (or you are blocked on all remaining ones), or the open-issues block at the top of this prompt is empty, output the completion signal:
+Output the completion signal only if the open-issues block at the top of this prompt is empty. After closing an issue, stop without it: the next iteration lists again.
 
 <promise>COMPLETE</promise>
