@@ -39,7 +39,7 @@ agent edits ──────────────────────�
   - `--open` finds the Layout in the git checkout you are in, else in `${GO60_REPO:-~/rs/go60}`.
   - `--open` writes the page to `${XDG_CACHE_HOME:-~/.cache}/go60/trainer.html` and opens the browser.
   - Key positions come from `config/info.json`, the board's own description.
-  - Drill (`d` in Explore): pick a stage by its number; type three lines with the next key lit. `h` hides the picture; Esc goes back.
+  - Drill (`d` in Explore): pick a stage by its number; type three lines with the next key lit. Tab hides or shows the picture, on the stage picker or mid-drill; Esc goes back.
   - Letter stages follow the Layout's rows: home row, plus top, plus bottom, all letters, then capitals and punctuation.
   - Symbol stages: short random groups of the symbols on `Symbol`, then real shell and Python lines.
     The hint lights the `Symbol` path; any path that sends the right character counts.

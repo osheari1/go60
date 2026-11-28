@@ -1006,7 +1006,8 @@ var Drill = (function () {
       return g;
     }, width);
     var lines = CODE.filter(function (l) { return l.split('').every(function (c) { return Reach.reach(layout, c); }); });
-    return lines.length ? fill(function () { return pick(lines); }, width) : [];
+    if (!lines.length) throw new Error(st.name + ': no built-in line uses only keys this Layout can send.');
+    return fill(function () { return pick(lines); }, width);
   }
 
   // A drill for stage n: random words that use only the stage's letters, filling LINES lines of WIDTH.
@@ -1019,7 +1020,7 @@ var Drill = (function () {
     st.letters.concat(st.capitals ? st.punct : []).forEach(function (c) { ok[c] = true; });
     var fits = function (w) { return w.split('').every(function (c) { return ok[c]; }); };
     var pool = WORDS.filter(fits).concat(st.capitals ? CONTRACTIONS.filter(fits) : []);
-    if (!pool.length) return [];
+    if (!pool.length) throw new Error(st.name + ': no built-in word uses only this stage\'s letters (' + st.letters.join(' ') + ').');
     var has = function (c) { return st.punct && st.punct.indexOf(c) >= 0; };
     var tokens = [], sentence = true;
     for (;;) {
@@ -1059,7 +1060,20 @@ var Drill = (function () {
     return Reach.reach(layout, c);
   }
 
-  return { WIDTH: WIDTH, LINES: LINES, engine: engine, wrap: wrap, stages: stages, generate: generate, hint: hint };
+  // The key that shows or hides the picture, in a drill too: not a printing character, so no drill asks for it.
+  var PICTURE = 'Tab';
+
+  // What a key press means to a drill: 'picture', a character, 'chord' (a home-row mod that fired
+  // instead of a letter), or null (a modifier alone, or a key that sends no character).
+  function read(e) {
+    if (e.key === PICTURE) return 'picture';
+    if (/^(Shift|Control|Alt|AltGraph|Meta|OS|Super|Hyper|CapsLock|NumLock|ScrollLock|Fn|Dead|Unidentified)$/.test(e.key)) return null;
+    if (e.ctrlKey || e.altKey || e.metaKey) return 'chord';
+    return e.key.length === 1 ? e.key : null;
+  }
+
+  return { WIDTH: WIDTH, LINES: LINES, PICTURE: PICTURE, engine: engine, wrap: wrap, stages: stages, generate: generate,
+    hint: hint, read: read };
 })();
 </script>
 
@@ -1225,7 +1239,6 @@ var Drill = (function () {
   var stages = Drill.stages(layout, keys);
   var dmenu = document.getElementById('drill-menu'), dtext = document.getElementById('drill-text');
   var dstats = document.getElementById('drill-stats'), dhint = document.getElementById('drill-hint');
-  var MODKEYS = /^(Shift|Control|Alt|AltGraph|Meta|OS|Super|Hyper|CapsLock|NumLock|ScrollLock|Fn|Dead|Unidentified)$/;
 
   function setMode(on) {
     drill.on = on;
@@ -1238,7 +1251,9 @@ var Drill = (function () {
 
   function start(n) {
     drill.stage = n;
-    var tokens = Drill.generate(layout, keys, n);
+    var tokens;
+    try { tokens = Drill.generate(layout, keys, n); }
+    catch (err) { drill.eng = null; render(); dstats.textContent = 'Cannot start this drill. ' + err.message; return; }
     drill.lines = Drill.wrap(tokens, Drill.WIDTH);
     drill.eng = Drill.engine(tokens);
     render();
@@ -1256,7 +1271,7 @@ var Drill = (function () {
         li.setAttribute('aria-current', i === drill.stage);
         html('span', 'letters', st.symbols ? st.symbols.join(' ') : st.letters.join(' ').toUpperCase(), li);
       });
-      html('div', 'where', 'h: picture ' + (drill.pic ? 'on' : 'off') + ' · Esc: back to Explore. ' +
+      html('div', 'where', Drill.PICTURE + ': picture ' + (drill.pic ? 'on' : 'off') + ', here or in a drill · Esc: back to Explore. ' +
         'In a drill: a wrong key holds you until you press the right one; Esc comes back here.', dmenu);
       state.layer = 0; state.active = Reach.route(layout, 0); state.hl = null; state.pos = null;
       draw();
@@ -1276,7 +1291,7 @@ var Drill = (function () {
       return;
     }
     var p = Drill.hint(layout, e.tokens, e.pos, stages[drill.stage]);
-    dstats.textContent = stages[drill.stage].name + (e.errors ? ' · ' + e.errors + ' error' + (e.errors === 1 ? '' : 's') : '');
+    dstats.textContent = stages[drill.stage].name + ' · ' + Drill.PICTURE + (drill.pic ? ' hides' : ' shows') + ' the picture' + (e.errors ? ' · ' + e.errors + ' error' + (e.errors === 1 ? '' : 's') : '');
     if (p) {
       if (drill.pic) dhint.textContent = p.words;
       state.layer = p.layer; state.active = p.active; state.hl = { hold: p.hold, tap: p.tap }; state.pos = null;
@@ -1286,11 +1301,12 @@ var Drill = (function () {
 
   function drillKey(e) {
     if (e.key === 'Escape') { if (drill.eng) { drill.eng = null; render(); } else setMode(false); return true; }
+    var sent = Drill.read(e);
+    if (sent === 'picture') { drill.pic = !drill.pic; render(); return true; }
     if (!drill.eng) {
       var n = Number(e.key);
       if (/^[1-9]$/.test(e.key) && n <= stages.length) start(n - 1);
       else if (e.key === 'Enter') start(drill.stage);
-      else if (e.key === 'h') { drill.pic = !drill.pic; render(); }
       else return false;
       return true;
     }
@@ -1299,9 +1315,6 @@ var Drill = (function () {
       start(drill.stage);
       return true;
     }
-    if (MODKEYS.test(e.key)) return false;
-    // What the board sent: a character, or a chord (a home-row mod that fired instead of a letter).
-    var sent = e.ctrlKey || e.altKey || e.metaKey ? 'chord' : e.key.length === 1 ? e.key : null;
     if (sent === null) return false;
     drill.eng.input(sent, e.timeStamp);
     render();

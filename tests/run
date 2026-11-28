@@ -262,6 +262,15 @@ check "Drill: in the Symbol stages a symbol is hinted through Symbol, even where
    && [[ "$(reach "(r => [5, 6].every(n => { const st = Drill.stages(layout, keys)[n], t = Drill.generate(layout, keys, n, r); return t.every((c, i) => !st.symbols.includes(c) || (h => h.layer == 13 && h.hold.join() == \"59\")(Drill.hint(layout, t, i, st))); }))($rng)")" == true ]]'
 check "Drill: a symbol counts by what the board sent, whichever path sent it" \
   '[[ "$(reach "(e => [e.input(\"(\", 0), e.input(\")\", 1)])(Drill.engine([\"(\", \")\"]))")" == "[\"ok\",\"done\"]" ]]'
+# Every home-row letter made Q: no common word fits the Home row stage.
+jq '(.layers[0][25,26,27,28,31,32,33,34].params[1].value, .layers[0][29,30].params[0].value) = "Q"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/nowords.html"
+check "Drill: a stage with no words fails loud, naming the stage" \
+  '[[ "$(page="$T/nowords.html" reach "(() => { try { Drill.generate(layout, keys, 0); return \"no error\"; } catch (e) { return e.message; } })()")" == *"Home row"* ]]'
+check "Drill: Tab toggles the picture, mid-drill too; drill keys still type" \
+  '[[ "$(reach "[{key: \"Tab\"}, {key: \"h\"}, {key: \"a\", ctrlKey: true}, {key: \"Shift\"}, {key: \"A\", shiftKey: true}].map(Drill.read)")" == "[\"picture\",\"h\",\"chord\",null,\"A\"]" ]]'
+check "Drill: the picture key is never a token a drill asks for, and the board can send it" \
+  '[[ "$(reach "(r => Reach.reach(layout, Drill.PICTURE) && Drill.stages(layout, keys).every((s, n) => [...Array(10)].every(() => !Drill.generate(layout, keys, n, r).includes(Drill.read({key: Drill.PICTURE})) )))($rng)")" == true ]]'
 check "Drill: nothing is saved between sessions" '! grep -Eq "localStorage|sessionStorage|indexedDB|document\\.cookie" "$page"'
 
 # --- go60-flash -----------------------------------------------------------
