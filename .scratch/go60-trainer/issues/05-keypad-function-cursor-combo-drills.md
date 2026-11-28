@@ -17,3 +17,9 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [ ] Suite checks: Reach answers for one key on `Keypad` and one on `Cursor`; every token these drills generate is reachable and off the unsafe list.
 - [ ] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
+
+## Comments
+- Note (operator, 2026-11-28), from the 02-04 review:
+  - `Tab` is the drill's picture toggle (`Drill.PICTURE`). `Drill.read` turns it into `'picture'`, so a drill cannot ask for `Tab`.
+  - If the Cursor drill needs `Tab` as a token, move the toggle to a key no drill asks for, and keep the suite check "the picture key is never a token a drill asks for" passing.
+  - Known gaps to pick up here: the "Cannot start this drill" line is cleared by the next `render()`; `Reach.paths(layout, "Ctrl+C")` returns the same route twice.

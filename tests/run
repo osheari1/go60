@@ -152,6 +152,147 @@ check "Reach: a pass-through key shows what it falls through to" \
   '[[ "$(reach "(k => [k.through, k.tap])(Reach.key(layout, 15, 16))")" == "[\"Mouse\",\"$(reach "Reach.key(layout, 14, 16).tap" | jq -r .)\"]" ]] \
    && [[ "$(reach "Reach.key(layout, 12, 50).through")" == "\"HRM_WinLinx\"" ]]'
 
+# Reach answers "how do I produce this output?" as the keys to hold and the keys to tap, on HRM_WinLinx.
+path() { reach "(p => p && [p.hold, p.tap])(Reach.reach(layout, $1))"; }
+check "Reach: a lowercase letter is one tap" '[[ "$(path "\"a\"")" == "[[],[32]]" ]]'
+check "Reach: a symbol comes from a thumb hold" '[[ "$(path "\"{\"")" == "[[59],[14]]" ]]'
+check "Reach: a function key comes from its combo" \
+  '[[ "$(path "\"F1\"")" == "[[],[1,13]]" ]] && [[ "$(reach "!!Reach.reach(layout, \"F1\").combo")" == true ]]'
+check "Reach: a modifier comes from a home-row hold" '[[ "$(path "\"Left Ctrl\"")" == "[[27],[]]" ]]'
+check "Reach: a capital comes from a cross-hand Shift" '[[ "$(path "\"A\"")" == "[[28],[32]]" ]]'
+check "Reach: a key found only on Magic" \
+  '[[ "$(path "\"Bootloader\"")" == "[[36],[12]]" ]] && [[ "$(reach "Reach.reach(layout, \"Bootloader\").layer")" == 18 ]]'
+check "Reach: a chord on a thumb layer" \
+  '[[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").map(p => p.hold.length + \",\" + p.tap.length)[0]")" == "\"1,1\"" ]] \
+   && [[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").some(p => p.hold == 54 && p.tap == 15)")" == true ]]'
+check "Reach: among equal routes, a thumb layer-hold beats a plain layer key" \
+  '[[ "$(reach "(p => [p.hold, p.layer])(Reach.paths(layout, \"Ctrl+Z\")[0])")" == "[[54],11]" ]] \
+   && reach "Reach.paths(layout, \"Ctrl+Z\")[0].words" | grep -q "^\"Hold ⌫ (Cursor), then tap ⌃Z"'
+check "Reach: a route through a plain layer key names the key" \
+  '[[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").filter(p => p.hold == 47)[0].words")" == "\"Hold the right-hand key in row 4, column 6 (Keypad), then tap ⌃Z. Ctrl+Z.\"" ]]'
+check "Reach: an output the board cannot make is null" '[[ "$(path "\"no such key\"")" == null ]]'
+check "Reach: the path says in words what to do" \
+  'reach "Reach.reach(layout, \"{\").words" | grep -q "Hold ␣ (Symbol), then tap {"'
+
+jq 'walk(if type == "string" then gsub("TKZ"; "ZZZ") | gsub("HRM"; "QQQ") | gsub("thumb|space"; "tt") else . end)' \
+  "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/names.html"
+check "Reach: reads hold-taps and macros by structure, not by name" \
+  '[[ "$(page="$T/names.html" path "\"A\"")" == "[[28],[32]]" && "$(page="$T/names.html" path "\"{\"")" == "[[59],[14]]" ]]'
+
+# Magic is held from the base and from Keypad. Make one of its keys pass-through: each route falls to its own layer.
+jq '.layers[18][9] = {"value": "&trans", "params": []}' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/routes.html"
+check "Reach: a pass-through key falls to the next lower active layer, on each route" \
+  '[[ "$(page="$T/routes.html" reach "Reach.ways(layout, 18).filter(w => w.how == \"hold\" && w.base == 0).map(w => (k => [w.hold, k.through, k.tap])(Reach.key(layout, 18, 9, w.active)))")" \
+      == "[[[36],\"HRM_WinLinx\",\"9\"],[[47,36],\"Keypad\",\"F9\"],[[55,36],\"Keypad\",\"F9\"]]" ]]'
+
+check "Reach: each layer says how to reach it" \
+  '[[ "$(reach "Reach.ways(layout, 13)[0].hold")" == "[59]" ]] \
+   && [[ "$(reach "Reach.layers(layout).every(l => l.index == 0 || Reach.ways(layout, l.index).length > 0)")" == true ]]'
+
+check "Reach: the three base modes, switched on Magic" \
+  '[[ "$(reach "Reach.bases(layout)")" == "[0,1,2]" ]] \
+   && [[ "$(reach "(w => [w.how, w.hold, w.tap])(Reach.ways(layout, 1)[0])")" == "[\"switch\",[36],50]" ]]'
+
+check "Reach: every layer has a note; per-finger notes explain home-row mods" \
+  '[[ "$(reach "Reach.layers(layout).every(l => Reach.note(layout, l.index).length > 20)")" == true ]] \
+   && reach "Reach.note(layout, 6)" | grep -qi "home-row" \
+   && reach "Reach.note(layout, 6)" | grep -qi "cross-hand" \
+   && reach "Reach.note(layout, 6)" | grep -qi "stacked" \
+   && reach "Reach.note(layout, 6)" | grep -qi "same-hand"'
+
+check "Reach: Magic warns about its bootloader, reset and Bluetooth-clear keys" \
+  'reach "Reach.note(layout, 18)" | grep -q "Careful" \
+   && [[ "$(reach "[12, 24, 10, 11].every(p => Reach.key(layout, 18, p).danger)")" == true ]]'
+
+check "Reach: combos on a layer, with their keys and result" \
+  '[[ "$(reach "Reach.combos(layout, [0]).filter(c => c.tap == \"F1\").map(c => c.keys)")" == "[[1,13]]" ]] \
+   && [[ "$(reach "Reach.combos(layout, [0, 13]).length")" == 0 ]]'
+
+# The Drill engine: tokens in, key presses in; position, errors and blocking out. Times are given, in ms.
+eng() { reach "(e => { $1; return [e.pos, e.errors, e.blocked, e.done()]; })(Drill.engine([\"a\", \"b\", \" \", \"c\"]))"; }
+check "Drill: a right key moves on" '[[ "$(eng "e.input(\"a\", 0)")" == "[1,0,false,false]" ]]'
+check "Drill: a wrong key blocks and counts one error" '[[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1)")" == "[1,1,true,false]" ]]'
+check "Drill: a blocked drill waits for the right key; each wrong key counts" \
+  '[[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1); e.input(\"c\", 2)")" == "[1,2,true,false]" ]] \
+   && [[ "$(eng "e.input(\"a\", 0); e.input(\"x\", 1); e.input(\"b\", 2)")" == "[2,1,false,false]" ]]'
+check "Drill: the last right key ends it, with accuracy and words per minute" \
+  '[[ "$(eng "[\"a\", \"x\", \"b\", \" \", \"c\"].forEach((k, i) => e.input(k, i * 3000))")" == "[4,1,false,true]" ]] \
+   && [[ "$(reach "(e => { [\"a\", \"x\", \"b\", \"c\", \"d\", \"e\"].forEach((k, i) => e.input(k, i * 3000)); return e.stats(); })(Drill.engine(\"abcde\".split(\"\")))" | jq -c "[.accuracy, .wpm]")" == "[0.8333333333333334,4]" ]]'
+check "Drill: input after the end changes nothing" '[[ "$(eng "\"ab c\".split(\"\").forEach(k => e.input(k, 0)); e.input(\"x\", 1)")" == "[4,0,false,true]" ]]'
+check "Drill: tokens wrap into lines at spaces" \
+  '[[ "$(reach "Drill.wrap(\"aa bb cc\".split(\"\"), 5)")" == "[[0,6],[6,8]]" ]] \
+   && [[ "$(reach "Drill.wrap(\"aaaaaa b\".split(\"\"), 3)")" == "[[0,7],[7,8]]" ]]'
+
+check "Drill: five letter stages, from the home row out" \
+  '[[ "$(reach "Drill.stages(layout, keys).slice(0, 5).map(s => s.letters.slice().sort().join(\"\"))")" \
+      == "[\"aeghinrsty\",\"abcdefghijlnorstuvy\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\",\"abcdefghijklmnopqrstuvwxyz\"]" ]] \
+   && [[ "$(reach "Drill.stages(layout, keys)[4].punct.join(\"\")")" == "\",.;'\''\"" && "$(reach "Drill.stages(layout, keys)[4].capsWord")" == true ]]'
+# Swap G (home row) and Q (bottom row) in the Layout: the stages follow.
+jq '.layers[0][29] as $g | .layers[0][29] = .layers[0][38] | .layers[0][38] = $g' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/swap.html"
+check "Drill: each stage's letters come from the Layout's rows" \
+  '[[ "$(page="$T/swap.html" reach "Drill.stages(layout, keys)[0].letters.slice().sort().join(\"\")")" == "\"aehinqrsty\"" ]]'
+
+# A seeded random source, so the suite is repeatable.
+rng='(s => () => (s = (s * 16807) % 2147483647) / 2147483647)(42)'
+check "Drill: a letter drill is three lines of words that use only the stage's letters" \
+  '[[ "$(reach "(r => [0, 1, 2, 3].every(n => [...Array(20)].every(() => { const t = Drill.generate(layout, keys, n, r); const ok = Drill.stages(layout, keys)[n].letters.concat([\" \"]); return t.length > 100 && Drill.wrap(t, Drill.WIDTH).length == 3 && t.every(c => ok.includes(c)); })))($rng)")" == true ]]'
+check "Drill: the last stage has capitals, , . ; '\'' and Caps Word words" \
+  '[[ "$(reach "(r => { const t = [...Array(30)].map(() => Drill.generate(layout, keys, 4, r).join(\"\")).join(\" \"); return [/[A-Z][a-z]/.test(t), /,/.test(t), /\\./.test(t), /;/.test(t), /'\''/.test(t), /\\b[A-Z]{2,}\\b/.test(t)]; })($rng)")" == "[true,true,true,true,true,true]" ]]'
+check "Drill: every token a letter stage generates is reachable, with a hint" \
+  '[[ "$(reach "(r => [0, 1, 2, 3, 4].every(n => [...Array(30)].every(() => { const t = Drill.generate(layout, keys, n, r); return t.every((c, i) => Reach.reach(layout, c) && Drill.hint(layout, t, i)); })))($rng)")" == true ]]'
+check "Drill: the hint lights the key to tap and the key to hold" \
+  '[[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\"a\"], 0))")" == "[[],[32]]" ]] \
+   && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\"A\", \"n\"], 0))")" == "[[28],[32]]" ]]'
+check "Drill: a capitals word lights Caps Word, then plain letters" \
+  '[[ "$(reach "(t => [0, 1].map(i => (h => [h.hold, h.tap])(Drill.hint(layout, t, i))))([\"A\", \"N\"])")" == "[[[],[56,32]],[[],[25]]]" ]]'
+check "Drill: two Symbol stages follow the letters" \
+  '[[ "$(reach "Drill.stages(layout, keys).slice(5).map(s => [s.layer, s.symbols.length])")" == "[[13,32],[13,32]]" ]]'
+check "Drill: the Symbol stages draw every symbol the Reach module finds on Symbol, and nothing else" \
+  '[[ "$(reach "(s => { const on = layout.layers[13].map((b, p) => Reach.key(layout, 13, p).types).filter(t => t && t.length == 1 && /[^a-z0-9 ]/i.test(t)); return on.every(c => s.includes(c)) && s.every(c => on.includes(c)); })(Drill.stages(layout, keys)[5].symbols)")" == true ]]'
+check "Drill: stage 1 of Symbol is short random groups of its symbols" \
+  '[[ "$(reach "(r => [...Array(20)].every(() => { const t = Drill.generate(layout, keys, 5, r), s = Drill.stages(layout, keys)[5].symbols; const g = t.join(\"\").split(\" \"); return Drill.wrap(t, Drill.WIDTH).length == 3 && g.every(x => x.length >= 2 && x.length <= 5 && x.split(\"\").every(c => s.includes(c))); }))($rng)")" == true ]]'
+check "Drill: stage 2 of Symbol is built-in shell and Python lines" \
+  '[[ "$(reach "(r => { const t = Drill.generate(layout, keys, 6, r).join(\"\"); return [Drill.wrap(t.split(\"\"), Drill.WIDTH).length, /[a-z]/.test(t), /[(){}\\[\\]|$=]/.test(t)]; })($rng)")" == "[3,true,true]" ]]'
+check "Drill: every token the Symbol stages generate is reachable, with a hint" \
+  '[[ "$(reach "(r => [5, 6].every(n => [...Array(30)].every(() => { const t = Drill.generate(layout, keys, n, r), st = Drill.stages(layout, keys)[n]; return t.length > 50 && t.every((c, i) => Reach.reach(layout, c) && Drill.hint(layout, t, i, st)); })))($rng)")" == true ]]'
+check "Drill: in the Symbol stages a symbol is hinted through Symbol, even where a base key sends it" \
+  '[[ "$(reach "(st => [\",\", \"(\", \"?\"].map(c => (h => [h.hold, h.tap, h.layer])(Drill.hint(layout, [c], 0, st))))(Drill.stages(layout, keys)[5])")" == "[[[59],[1],13],[[59],[2],13],[[59],[17],13]]" ]] \
+   && [[ "$(reach "(h => [h.hold, h.tap])(Drill.hint(layout, [\",\"], 0))")" == "[[],[22]]" ]] \
+   && [[ "$(reach "(r => [5, 6].every(n => { const st = Drill.stages(layout, keys)[n], t = Drill.generate(layout, keys, n, r); return t.every((c, i) => !st.symbols.includes(c) || (h => h.layer == 13 && h.hold.join() == \"59\")(Drill.hint(layout, t, i, st))); }))($rng)")" == true ]]'
+jq '.layer_names[13] = "Glyphs"' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/glyphs.html"
+check "Drill: the Symbol stages find their layer when it is renamed" \
+  '[[ "$(page="$T/glyphs.html" reach "Drill.stages(layout, keys).slice(5).map(s => [s.layer, s.symbols.length])")" == "[[13,32],[13,32]]" ]]'
+# The Symbol layer emptied: no layer carries more symbols than the base, so there is none to drill.
+jq '.layers[13] |= map({value: "&trans", params: []})' "$ROOT/config/go60.json" | "$ROOT/bin/go60-train" > "$T/nosym.html"
+check "Drill: with no symbol layer the Symbol stages are still listed and fail loud" \
+  '[[ "$(page="$T/nosym.html" reach "Drill.stages(layout, keys).length")" == 7 ]] \
+   && [[ "$(page="$T/nosym.html" reach "[5, 6].map(n => { try { Drill.generate(layout, keys, n); return \"no error\"; } catch (e) { return e.message; } }).join(\" | \")")" == *"Symbols: random groups"*"no layer"*"Symbols: shell"*"no layer"* ]]'
+# E and S made F13: every built-in line has an E or an S, so none can be sent.
+jq '(.. | objects | select(.value == "E" or .value == "S") | .value) = "F13"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/noes.html"
+check "Drill: Symbol lines with no line this Layout can send fail loud, naming the stage" \
+  '[[ "$(page="$T/noes.html" reach "(() => { try { Drill.generate(layout, keys, 6); return \"no error\"; } catch (e) { return e.message; } })()")" == *"Symbols: shell and Python lines: no built-in line"* ]]'
+# Every Space made F13: the pieces of a Symbol drill have nothing to go between them.
+jq '(.. | objects | select(.value == "SPACE") | .value) = "F13"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/nospace.html"
+check "Drill: Symbol drills with no Space fail loud, naming the stage" \
+  '[[ "$(page="$T/nospace.html" reach "[5, 6].map(n => { try { Drill.generate(layout, keys, n); return \"no error\"; } catch (e) { return e.message; } }).join(\" | \")")" == *"random groups: "*"Space"*"Python lines: "*"Space"* ]]'
+check "Drill: a symbol counts by what the board sent, whichever path sent it" \
+  '[[ "$(reach "(e => [e.input(\"(\", 0), e.input(\")\", 1)])(Drill.engine([\"(\", \")\"]))")" == "[\"ok\",\"done\"]" ]]'
+# Every home-row letter made Q: no common word fits the Home row stage.
+jq '(.layers[0][25,26,27,28,31,32,33,34].params[1].value, .layers[0][29,30].params[0].value) = "Q"' "$ROOT/config/go60.json" \
+  | "$ROOT/bin/go60-train" > "$T/nowords.html"
+check "Drill: a stage with no words fails loud, naming the stage" \
+  '[[ "$(page="$T/nowords.html" reach "(() => { try { Drill.generate(layout, keys, 0); return \"no error\"; } catch (e) { return e.message; } })()")" == *"Home row"* ]]'
+check "Drill: Tab toggles the picture, mid-drill too; drill keys still type" \
+  '[[ "$(reach "[{key: \"Tab\"}, {key: \"h\"}, {key: \"a\", ctrlKey: true}, {key: \"Shift\"}, {key: \"A\", shiftKey: true}].map(Drill.read)")" == "[\"picture\",\"h\",\"chord\",null,\"A\"]" ]]'
+check "Drill: the picture key is never a token a drill asks for, and the board can send it" \
+  '[[ "$(reach "(r => Reach.reach(layout, Drill.PICTURE) && Drill.stages(layout, keys).every((s, n) => [...Array(10)].every(() => Drill.generate(layout, keys, n, r).every(t => t !== Drill.PICTURE && t !== \"\\t\") )))($rng)")" == true ]]'
+check "Reach: board() fails loud when info.json has no thumb keys" \
+  '[[ "$(reach "(() => { try { Reach.board(layout, keys.map(k => Object.assign({}, k, {label: k.label.replace(/T(\\d+)$/, \"X\$1\")}))); return \"no error\"; } catch (e) { return e.message; } })()")" == *thumb* ]]'
+check "Drill: nothing is saved between sessions" '! grep -Eq "localStorage|sessionStorage|indexedDB|document\\.cookie" "$page"'
+
 # --- go60-flash -----------------------------------------------------------
 
 # Stubs: findmnt knows nothing; udisksctl "mounts" DEV_DIR/<label> at MNT_DIR/<label>.

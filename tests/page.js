@@ -1,5 +1,5 @@
 // tests/page.js PAGE EXPR: load the Reach module from a generated Trainer page, with no browser,
-// and print EXPR's value as JSON. In scope: Reach, layout (the page's Layout), keys (its key positions).
+// and print EXPR's value as JSON. In scope: Reach, Drill, layout (the page's Layout, given to Reach.board), keys (its key positions).
 'use strict';
 const fs = require('fs');
 const vm = require('vm');
@@ -14,6 +14,8 @@ const script = id => {
 
 const ctx = vm.createContext({});
 vm.runInContext(script('reach'), ctx);
+vm.runInContext(script('drill'), ctx);
 ctx.layout = JSON.parse(script('data-layout'));
 ctx.keys = JSON.parse(script('data-keys'));
+ctx.Reach.board(ctx.layout, ctx.keys);
 console.log(JSON.stringify(vm.runInContext(expr, ctx)));

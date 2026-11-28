@@ -5,7 +5,7 @@
 <title>Go60 Trainer</title>
 <style>
   :root { --bg: #16181d; --fg: #e6e6e6; --dim: #7b8190; --key: #262a33; --edge: #3a404c;
-          --hold: #f0b45a; --sel: #5aa9f0; --trans: #1d2027; --danger: #e5534b; }
+          --hold: #f0b45a; --sel: #5aa9f0; --trans: #1d2027; --danger: #e5534b; --combo: #b48ef0; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 1rem 1.5rem; background: var(--bg); color: var(--fg);
          font: 15px/1.4 system-ui, sans-serif; }
@@ -31,14 +31,57 @@
   #info .danger { color: var(--danger); }
   .legend { color: var(--dim); font-size: .85rem; margin-top: .5rem; }
   .legend b { color: var(--hold); font-weight: normal; }
+  .legend .t { color: var(--sel); }
+  #layers .group { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin-right: 1rem; }
+  #layers .group span { color: var(--dim); }
+  .find { display: flex; gap: 1rem; align-items: center; margin-bottom: .4rem; }
+  .find input[type=search] { width: 26rem; background: var(--key); color: var(--fg); border: 1px solid var(--edge);
+                             border-radius: 4px; padding: .3rem .5rem; font: inherit; }
+  #found { min-height: 1.4em; color: var(--sel); }
+  #note { max-width: 1100px; margin: .4rem 0; }
+  #ways { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin-bottom: .6rem; }
+  #ways button { background: var(--key); color: var(--fg); border: 1px solid var(--edge); border-radius: 4px;
+                 padding: .15rem .5rem; font: inherit; font-size: .85rem; cursor: pointer; }
+  #ways button[aria-pressed="true"] { border-color: var(--hold); }
+  .k.h-hold rect { stroke: var(--hold); stroke-width: 3; }
+  .k.h-tap rect { stroke: var(--sel); stroke-width: 3; fill: #24364a; }
+  .combo polyline { fill: none; stroke: var(--combo); stroke-width: 2; opacity: .8; }
+  .combo circle { fill: var(--combo); }
+  .combo rect { fill: var(--bg); stroke: var(--combo); }
+  .combo text { fill: var(--combo); font-size: 10px; text-anchor: middle; dominant-baseline: central; }
+  .combo { pointer-events: visiblePainted; }
+  #drill { max-width: 1100px; margin-bottom: 1rem; }
+  #drill-menu ol { margin: .3rem 0; padding-left: 1.5rem; }
+  #drill-menu li[aria-current="true"] { color: var(--sel); }
+  #drill-menu .letters { color: var(--dim); }
+  #drill-text { font: 1.6rem/1.7 ui-monospace, monospace; white-space: pre; margin: .5rem 0; }
+  #drill-text .done { color: var(--dim); }
+  #drill-text .cur { background: #24364a; border-bottom: 2px solid var(--sel); }
+  #drill-text .cur.bad { background: #4a2424; border-bottom-color: var(--danger); }
+  #drill-stats { font-size: 1.2rem; color: var(--sel); min-height: 1.4em; }
+  body.drilling #layers, body.drilling .find, body.drilling #found, body.drilling #note,
+  body.drilling #ways, body.drilling #info, body.drilling .legend { display: none; }
+  body.drilling.nopic #board { display: none; }
 </style>
 </head>
 <body>
-<h1>Go60 Trainer · Explore</h1>
+<h1>Go60 Trainer · <span id="mode">Explore</span></h1>
 <div class="title" id="title"></div>
 <nav id="layers" aria-label="Layers"></nav>
+<div class="find"><label>Find <input id="search" type="search" placeholder="a character or key: {  F1  Ctrl  A  Ctrl+Z  Bootloader" autocomplete="off"></label>
+  <label><input id="show-combos" type="checkbox" checked> combos</label></div>
+<div id="found" aria-live="polite"></div>
+<p id="note"></p>
+<div id="ways"></div>
+<section id="drill" hidden>
+  <div id="drill-menu"></div>
+  <div id="drill-text"></div>
+  <div id="drill-stats" aria-live="polite"></div>
+  <div id="drill-hint" class="where"></div>
+</section>
 <svg id="board" role="img" aria-label="Go60 keys on the chosen layer"></svg>
-<div class="legend">Top: tap. <b>Bottom: hold.</b> Dashed: pass-through (shows what it falls through to). Select a key to see what it sends; ← → change layer.</div>
+<div class="legend">Top: tap. <b>Bottom: hold.</b> Dashed: pass-through (shows what it falls through to). Linked dots: a combo, pressed together.
+  Found: <b>hold</b> these, <span class="t">tap</span> these. Select a key to see what it sends; ← → change layer; / to find; d to drill.</div>
 <section id="info" aria-live="polite">Select a key.</section>
 
 <script id="data-layout" type="application/json">{{layout}}</script>
@@ -144,14 +187,14 @@ var Reach = (function () {
       case '&tog': return { kind: 'layer', how: 'toggle', layer: val(ps[0]) };
       case '&layer': return { kind: 'layer', how: 'dance', layer: val(ps[0]) };
       case '&sk': return { kind: 'sticky', key: parseKey(ps[0]) };
-      case '&caps_word': return { kind: 'special', label: 'CapsW', words: 'Caps Word: types the next word in capitals' };
-      case '&key_repeat': return { kind: 'special', label: 'Rpt', words: 'repeats the last key' };
+      case '&caps_word': return { kind: 'special', label: 'CapsW', name: 'Caps Word', words: 'Caps Word: types the next word in capitals' };
+      case '&key_repeat': return { kind: 'special', label: 'Rpt', name: 'Repeat', words: 'repeats the last key' };
       case '&magic': return { kind: 'holdtap',
         hold: { kind: 'layer', how: 'hold', layer: ps[0] !== undefined ? val(ps[0]) : magicLayer(layout) },
-        tap: { kind: 'special', label: '✦', words: 'shows the status lights' } };
-      case '&bootloader': return { kind: 'special', danger: true, label: 'Boot',
+        tap: { kind: 'special', label: '✦', name: 'Status', words: 'shows the status lights' } };
+      case '&bootloader': return { kind: 'special', danger: true, label: 'Boot', name: 'Bootloader',
         words: 'Bootloader: this half stops being a keyboard and waits for new firmware' };
-      case '&reset': case '&sys_reset': return { kind: 'special', danger: true, label: 'Reset', words: 'Reset: restarts this half' };
+      case '&reset': case '&sys_reset': return { kind: 'special', danger: true, label: 'Reset', name: 'Reset', words: 'Reset: restarts this half' };
       case '&bt': return bt(val(ps[0]), val(ps[1]));
       case '&out': return { kind: 'special', label: val(ps[0]) === 'OUT_USB' ? 'USB' : val(ps[0]) === 'OUT_BLE' ? 'BLE' : 'Out',
         words: val(ps[0]) === 'OUT_USB' ? 'sends keys over USB' : val(ps[0]) === 'OUT_BLE' ? 'sends keys over Bluetooth' : 'toggles USB or Bluetooth output' };
@@ -164,6 +207,8 @@ var Reach = (function () {
     var ht = find(layout.holdTaps, v);
     if (ht) return {
       kind: 'holdtap',
+      triggers: ht.holdTriggerKeyPositions || null,
+      onRelease: !!ht.holdTriggerOnRelease,
       hold: resolve(layout, { value: ht.bindings[0], params: ps[0] !== undefined ? [ps[0]] : [] }, depth),
       tap: resolve(layout, { value: ht.bindings[1], params: ps[1] !== undefined ? [ps[1]] : [] }, depth)
     };
@@ -173,8 +218,8 @@ var Reach = (function () {
   }
 
   function bt(cmd, n) {
-    if (cmd === 'BT_CLR') return { kind: 'special', danger: true, label: 'BT Clr', words: 'clears the pairing of the current Bluetooth profile' };
-    if (cmd === 'BT_CLR_ALL') return { kind: 'special', danger: true, label: 'BT Clr*', words: 'clears every Bluetooth pairing' };
+    if (cmd === 'BT_CLR') return { kind: 'special', danger: true, label: 'BT Clr', name: 'Bluetooth clear', words: 'clears the pairing of the current Bluetooth profile' };
+    if (cmd === 'BT_CLR_ALL') return { kind: 'special', danger: true, label: 'BT Clr*', name: 'Bluetooth clear all', words: 'clears every Bluetooth pairing' };
     if (cmd === 'BT_SEL') return { kind: 'special', label: 'BT' + n, words: 'switches to Bluetooth profile ' + n };
     if (cmd === 'BT_NXT') return { kind: 'special', label: 'BT→', words: 'next Bluetooth profile' };
     if (cmd === 'BT_PRV') return { kind: 'special', label: 'BT←', words: 'previous Bluetooth profile' };
@@ -231,7 +276,9 @@ var Reach = (function () {
       case 'holdtap': return label(layout, d.tap);
       case 'macro':
         if (d.steps.length) return d.steps.map(function (s) { return label(layout, s); }).join('');
-        return d.held.map(function (s) { return label(layout, s); }).join('+');
+        // What it sends first, then the layers it holds.
+        return d.held.filter(function (s) { return s.kind !== 'layer'; }).concat(d.held.filter(function (s) { return s.kind === 'layer'; }))
+          .map(function (s) { return label(layout, s); }).join('+');
       case 'none': return '';
       case 'trans': return '▽';
       default: return d.label;
@@ -288,36 +335,432 @@ var Reach = (function () {
     return !!(d.danger || (d.kind === 'holdtap' && (danger(d.tap) || danger(d.hold))));
   }
 
-  // Layers a binding turns on while it is held.
-  function holdsLayers(d) {
-    if (d.kind === 'layer' && (d.how === 'hold' || d.how === 'dance')) return [d.layer];
-    if (d.kind === 'holdtap') return holdsLayers(d.hold);
-    if (d.kind === 'macro') return [].concat.apply([], d.held.map(holdsLayers));
-    return [];
+  // --- Layer state, as ZMK resolves it ---------------------------------------
+  // A state is the set of active layers (ascending) and the keys held to get there. A key press hits
+  // the highest active layer whose key is not pass-through.
+
+  var MODELS = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  var MAX_HOLDS = 3;
+
+  // Per Layout: every binding resolved once, and the state searches done so far.
+  function model(layout) {
+    var m = MODELS && MODELS.get(layout);
+    if (m) return m;
+    m = { at: layout.layers.map(function (l) { return l.map(function (b) { return resolve(layout, b); }); }),
+      states: {}, ways: {}, paths: {}, keys: null };
+    if (MODELS) MODELS.set(layout, m);
+    return m;
   }
 
-  // The layer a pass-through key on layer n falls to: the lowest layer below n holding a key
-  // that turns n on while held. With none (reached by a switch, or the base itself), the base layer.
-  function below(layout, n) {
-    for (var i = 0; i < n; i++) {
-      for (var p = 0; p < layout.layers[i].length; p++) {
-        if (holdsLayers(resolve(layout, layout.layers[i][p])).indexOf(n) >= 0) return i;
+  // The board's key positions (config/info.json), so Reach can tell thumb keys and name keys by place.
+  function board(layout, keys) {
+    var m = model(layout);
+    m.keys = keys;
+    // Thumb keys are info.json labels ending T<n>; none found means the labels changed, so ranking would silently break.
+    if (!keys.some(function (k, i) { return thumb(m, i); })) throw new Error('Reach.board: no thumb keys in config/info.json (labels ending T<n>).');
+    m.ways = {};
+    m.paths = {};
+  }
+
+  function thumb(m, pos) { return !!(m.keys && m.keys[pos] && /(^|_)T\d+$/.test(m.keys[pos].label)); }
+
+  // Where a key sits: its hand, and its row and column counted from the middle of the board.
+  function place(m, pos) {
+    var ks = m.keys, k = ks && ks[pos];
+    if (!k) return 'key ' + pos;
+    var xs = ks.map(function (q) { return q.x; }), mid = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+    var side = function (q) { return q.x < mid ? 'left' : 'right'; };
+    var t = thumb(m, pos);
+    var peers = ks.map(function (q, i) { return i; }).filter(function (i) {
+      return side(ks[i]) === side(k) && (t ? thumb(m, i) : !thumb(m, i) && ks[i].row === k.row);
+    }).sort(function (a, b) { return Math.abs(ks[a].x - mid) - Math.abs(ks[b].x - mid); });
+    var n = peers.indexOf(pos) + 1;
+    return t ? 'the ' + side(k) + '-hand thumb key ' + n : 'the ' + side(k) + '-hand key in row ' + (k.row + 1) + ', column ' + n;
+  }
+
+  // A held key that turns on a layer but is not a thumb key: routes through it rank below thumb layer-holds.
+  function offThumb(m, s) {
+    return s.holds.filter(function (h) { return !h.adds.mods.length && h.adds.layers.length && !thumb(m, h.pos); }).length;
+  }
+
+  function lookup(m, active, pos) {
+    for (var i = active.length - 1; i >= 0; i--) {
+      var d = m.at[active[i]][pos];
+      if (d.kind !== 'trans') return { d: d, layer: active[i] };
+    }
+    return null;
+  }
+
+  function union(a, b) {
+    var out = a.slice();
+    b.forEach(function (x) { if (out.indexOf(x) < 0) out.push(x); });
+    return out.sort(function (x, y) { return typeof x === 'number' ? x - y : x < y ? -1 : x > y ? 1 : 0; });
+  }
+
+  // What holding a binding turns on: layers, and modifier key codes.
+  function holdOf(d) {
+    var r = { layers: [], mods: [] };
+    (function walk(d) {
+      if (d.kind === 'layer' && (d.how === 'hold' || d.how === 'dance')) r.layers.push(Number(d.layer));
+      else if (d.kind === 'key' && MODS[d.key.code] && !d.key.mods.length) r.mods.push(d.key.code);
+      else if (d.kind === 'holdtap') walk(d.hold);
+      else if (d.kind === 'macro' && !d.steps.length && !d.letsGo) d.held.forEach(walk);
+    })(d);
+    return r;
+  }
+
+  // A held hold-tap only stays a hold if the next key is one of its trigger positions;
+  // with hold-trigger-on-release, other held keys do not count.
+  function allows(s, pos, asHold) {
+    return s.holds.every(function (h) {
+      var d = h.d;
+      if (d.kind !== 'holdtap' || !d.triggers) return true;
+      return (asHold && d.onRelease) || d.triggers.indexOf(pos) >= 0;
+    });
+  }
+
+  function held(s, pos) { return s.holds.some(function (h) { return h.pos === pos; }); }
+
+  function bases(layout) {
+    var m = model(layout), out = [0];
+    m.at.forEach(function (l) {
+      l.forEach(function (d) { if (d.kind === 'layer' && d.how === 'to') out = union(out, [Number(d.layer)]); });
+    });
+    return out;
+  }
+
+  function baseActive(b) { return b === 0 ? [0] : [0, b]; }
+
+  // Every state reachable from base mode b by holding up to MAX_HOLDS keys, fewest holds first.
+  function states(layout, b) {
+    var m = model(layout);
+    if (m.states[b]) return m.states[b];
+    var seen = {}, out = [], queue = [{ base: b, active: baseActive(b), mods: [], holds: [] }];
+    var n = layout.layers[0].length;
+    while (queue.length) {
+      var s = queue.shift();
+      out.push(s);
+      if (s.holds.length >= MAX_HOLDS) continue;
+      for (var pos = 0; pos < n; pos++) {
+        if (held(s, pos) || !allows(s, pos, true)) continue;
+        var hit = lookup(m, s.active, pos);
+        if (!hit) continue;
+        var e = holdOf(hit.d);
+        var active = union(s.active, e.layers), mods = union(s.mods, e.mods);
+        if (active.length === s.active.length && mods.length === s.mods.length) continue;
+        var hs = s.holds.concat([{ pos: pos, layer: hit.layer, d: hit.d, adds: e }]);
+        var id = active.join() + '|' + mods.join() + '|' + hs.map(function (h) { return h.pos; }).sort().join();
+        if (seen[id]) continue;
+        seen[id] = true;
+        queue.push({ base: b, active: active, mods: mods, holds: hs });
       }
     }
-    return n > 0 ? 0 : null;
+    return (m.states[b] = out);
+  }
+
+  function top(active) { return active[active.length - 1]; }
+
+  // Combos that fire with these layers active (ZMK checks the highest active layer).
+  function activeCombos(layout, active) {
+    var t = top(active);
+    return (layout.combos || []).filter(function (c) {
+      return !c.layers || !c.layers.length || c.layers.indexOf(t) >= 0;
+    });
+  }
+
+  function combos(layout, active) {
+    return activeCombos(layout, active).map(function (c) {
+      var d = resolve(layout, c.binding);
+      return { name: c.name, keys: c.keyPositions.slice(), tap: label(layout, d), words: cap(words(layout, d)) };
+    });
+  }
+
+  // --- Reach: how do I produce this output? -----------------------------------
+
+  var MODWORD = /^(shift|ctrl|control|alt|opt|option|gui|win|cmd|super|meta)$/i;
+  var MODNAME = { shift: 'Shift', ctrl: 'Ctrl', control: 'Ctrl', alt: 'Alt', opt: 'Alt', option: 'Alt',
+    gui: 'GUI', win: 'GUI', cmd: 'GUI', super: 'GUI', meta: 'GUI' };
+
+  // A query: one character, a chord ("Ctrl+Shift+G"), or a key name ("F1", "Caps Lock", "Bootloader").
+  function parse(q) {
+    if (q.length === 1) return { char: q };
+    var m = /^((?:[a-z]+\s*\+\s*)+)(.+)$/i.exec(q.trim());
+    if (m) {
+      var mods = m[1].split('+').map(function (x) { return x.trim(); }).filter(Boolean);
+      if (mods.every(function (x) { return MODWORD.test(x); }))
+        return { mods: union([], mods.map(function (x) { return MODNAME[x.toLowerCase()]; })), key: m[2].trim().toLowerCase() };
+    }
+    return { name: q.trim().toLowerCase() };
+  }
+
+  function text(d) {
+    if (d.kind === 'key') return keyChar(d.key);
+    if (d.kind === 'macro' && d.steps.length && !d.held.length && d.steps.every(printing))
+      return d.steps.map(function (s) { return keyChar(s.key); }).join('');
+    return null;
+  }
+
+  function names(layout, d) {
+    var n = [label(layout, d)];
+    if (d.kind === 'key') {
+      n.push(keyName(d.key), keyName(d.key, true));
+      if (!d.key.mods.length) n.push(d.key.code);
+      if (!d.key.mods.length && MODS[d.key.code]) n.push(MODS[d.key.code]);
+    } else if (d.kind === 'sticky') n.push('sticky ' + keyName(d.key), 'sticky ' + keyName(d.key, true));
+    else if (d.kind !== 'layer') n.push(words(layout, d));
+    if (d.name) n.push(d.name);
+    if (text(d)) n.push(text(d));
+    return n.map(function (x) { return String(x).toLowerCase(); });
+  }
+
+  function matches(layout, d, q) {
+    if (q.char !== undefined) return text(d) === q.char || (q.char === ' ' && d.kind === 'key' && !d.key.mods.length && d.key.code === 'SPACE');
+    if (q.mods) {
+      if (d.kind !== 'key') return false;
+      var mods = union([], d.key.mods);
+      return mods.join() === q.mods.join() && names(layout, { kind: 'key', key: { mods: [], code: d.key.code } }).indexOf(q.key) >= 0;
+    }
+    return names(layout, d).indexOf(q.name) >= 0;
+  }
+
+  // What a tap sends with these modifier codes held; null when held modifiers spoil it.
+  function withMods(d, mods) {
+    if (d.kind === 'holdtap') d = d.tap;
+    if (d.kind === 'trans' || d.kind === 'none') return null;
+    if (!mods.length) return d;
+    if (d.kind === 'key') return { kind: 'key', key: { mods: mods.map(function (c) { return MODS[c]; }).concat(d.key.mods), code: d.key.code } };
+    if (d.kind === 'macro' && d.letsGo) return d;
+    return null;
+  }
+
+  // Every way to produce the output from base mode `base` (default the first, HRM_WinLinx), best first.
+  // A path: hold (positions, in order), tap (positions; two or more for a combo), layer (where the tap lands),
+  // active (layers on at the tap), combo (its name, or null), words.
+  function paths(layout, query, base) {
+    var m = model(layout), id = (base || 0) + '|' + query;
+    if (!m.paths.hasOwnProperty(id)) m.paths[id] = search(layout, query, base);
+    return m.paths[id].slice();
+  }
+
+  function search(layout, query, base) {
+    var q = parse(String(query)), m = model(layout), found = [];
+    if (!q.char && !q.name && !q.mods) return [];
+    states(layout, base || 0).forEach(function (s) {
+      var last = s.holds[s.holds.length - 1];
+      if (last && last.adds.mods.length && s.mods.length === last.adds.mods.length) {
+        last.adds.mods.forEach(function (c) {
+          var d = { kind: 'key', key: { mods: [], code: c } };
+          if (matches(layout, d, q)) add(s, path(layout, s, d, [], null, last.layer));
+        });
+      }
+      for (var pos = 0; pos < m.at[0].length; pos++) {
+        if (held(s, pos) || !allows(s, pos, false)) continue;
+        var hit = lookup(m, s.active, pos), d = hit && withMods(hit.d, s.mods);
+        if (d && matches(layout, d, q)) add(s, path(layout, s, d, [pos], null, hit.layer));
+      }
+      activeCombos(layout, s.active).forEach(function (c) {
+        if (c.keyPositions.some(function (p) { return held(s, p) || !allows(s, p, false); })) return;
+        var d = withMods(resolve(layout, c.binding), s.mods);
+        if (d && matches(layout, d, q)) add(s, path(layout, s, d, c.keyPositions.slice(), c.name, top(s.active)));
+      });
+    });
+    function add(s, p) { found.push({ p: p, order: found.length, off: offThumb(m, s) }); }
+    found.sort(function (a, b) {
+      var x = a.p, y = b.p;
+      return (x.hold.length + x.tap.length) - (y.hold.length + y.tap.length) || x.hold.length - y.hold.length ||
+        a.off - b.off || x.mods.length - y.mods.length || a.order - b.order;
+    });
+    return found.map(function (f) { return f.p; });
+  }
+
+  function reach(layout, query, base) { return paths(layout, query, base)[0] || null; }
+
+  // A held key in words: its tap label, and what holding it gives.
+  function heldWord(layout, h) {
+    // A home-row mod also turns on its per-finger layer; the modifier is what you hold it for.
+    var m = model(layout), d = h.d, give = h.adds.mods.length ? h.adds.mods.map(function (c) { return MODS[c]; }).join('+')
+      : h.adds.layers.map(function (l) { return layerName(layout, l); }).join('+');
+    var t = d.kind === 'holdtap' ? label(layout, d.tap) : '';
+    if (t && t !== give) return t + ' (' + give + ')';
+    return m.keys ? place(m, h.pos) + ' (' + give + ')' : give;
+  }
+
+  function path(layout, s, d, tap, combo, layer) {
+    var m = model(layout);
+    var hold = s.holds.map(function (h) { return heldWord(layout, h); });
+    var tapLabels = tap.map(function (p) { var hit = lookup(m, s.active, p); return hit ? label(layout, hit.d) : String(p); });
+    var w = hold.length ? 'Hold ' + hold.join(', then hold ') : '';
+    if (tap.length) {
+      var t = combo ? 'press ' + tapLabels.join(' and ') + ' together (a combo)' : 'tap ' + tapLabels[0];
+      w = w ? w + ', then ' + t : cap(t);
+    }
+    return { hold: s.holds.map(function (h) { return h.pos; }), tap: tap, layer: layer, active: s.active.slice(),
+      mods: s.mods.map(function (c) { return MODS[c]; }), combo: combo, sends: cap(words(layout, d)),
+      words: w + '. ' + cap(words(layout, d)) + '.' };
+  }
+
+  // --- Ways to reach a layer ---------------------------------------------------
+
+  // How to get layer n on: hold keys (each pressed on the layer the previous one turned on),
+  // or tap a key that switches, toggles or locks it. Each way: how, base, hold, tap, active (layers on after).
+  function ways(layout, n) {
+    var m = model(layout);
+    if (m.ways[n]) return m.ways[n];
+    var out = [], seen = {};
+    function add(w) {
+      var id = [w.how, w.base, w.active.join(), w.hold.join(), w.tap].join('|');
+      if (!seen[id]) { seen[id] = true; out.push(w); }
+    }
+    bases(layout).forEach(function (b) {
+      if (b === n) add({ how: 'base', base: b, hold: [], tap: null, active: baseActive(b), holdWords: [] });
+      states(layout, b).forEach(function (s) {
+        var chained = s.holds.every(function (h, i) {
+          return h.adds.layers.length && (i === 0 || s.holds[i - 1].adds.layers.indexOf(h.layer) >= 0);
+        });
+        if (!chained) return;
+        var hw = s.holds.map(function (h) { return heldWord(layout, h); });
+        var last = s.holds[s.holds.length - 1];
+        if (last && last.adds.layers.indexOf(n) >= 0 && (s.holds.length === 1 || s.holds[s.holds.length - 2].adds.layers.indexOf(n) < 0))
+          add({ how: 'hold', base: b, hold: s.holds.map(function (h) { return h.pos; }), tap: null, active: s.active, holdWords: hw });
+        for (var pos = 0; pos < m.at[0].length; pos++) {
+          if (held(s, pos)) continue;
+          var hit = lookup(m, s.active, pos);
+          if (!hit || (last && last.adds.layers.indexOf(hit.layer) < 0)) continue;
+          var d = hit.d.kind === 'holdtap' ? hit.d.tap : hit.d;
+          if (d.kind !== 'layer' || Number(d.layer) !== n || d.how === 'hold') continue;
+          var how = d.how === 'to' ? 'switch' : d.how === 'toggle' ? 'toggle' : 'lock';
+          if (how === 'switch' && b === n) continue;
+          add({ how: how, base: b, hold: s.holds.map(function (h) { return h.pos; }), tap: pos,
+            active: how === 'switch' ? baseActive(n) : union(baseActive(b), [n]), holdWords: hw, tapWord: label(layout, hit.d) });
+        }
+      });
+    });
+    out.sort(function (x, y) {
+      var rank = { base: 0, hold: 1, switch: 2, lock: 3, toggle: 3 };
+      return (x.base !== 0) - (y.base !== 0) || rank[x.how] - rank[y.how] ||
+        (x.hold.length + (x.tap !== null)) - (y.hold.length + (y.tap !== null));
+    });
+    return (m.ways[n] = out);
+  }
+
+  // The layers on for the first way to reach n; with none, n over the base layer.
+  function route(layout, n) {
+    var w = ways(layout, n)[0];
+    return w ? w.active : n === 0 ? [0] : [0, n];
+  }
+
+  function wayWords(layout, w) {
+    var from = w.base !== 0 ? ' (in ' + layerName(layout, w.base) + ')' : '';
+    if (w.how === 'base') return w.base === 0 ? 'On when nothing is held: the default base layer.' : 'Base mode.';
+    var h = w.holdWords.length ? 'Hold ' + w.holdWords.join(', then hold ') : '';
+    if (w.how === 'hold') return h + from + '.';
+    var t = w.how === 'switch' ? 'tap ' + w.tapWord + ' to switch to it (it stays)'
+      : w.how === 'toggle' ? 'tap ' + w.tapWord + ' to turn it on or off'
+      : 'tap ' + w.tapWord + ' twice to lock it on';
+    return (h ? h + ', then ' + t : cap(t)) + from + '.';
+  }
+
+  // --- Layer notes, from structure --------------------------------------------
+
+  function category(d) {
+    if (d.kind === 'holdtap') d = d.tap;
+    if (d.kind === 'key') {
+      var c = keyChar(d.key);
+      if (c !== null) return /[a-z]/i.test(c) ? 'letters' : /[0-9]/.test(c) ? 'digits' : 'symbols';
+      if (d.key.mods.some(function (x) { return x !== 'Shift'; })) return 'shortcuts';
+      if (/^F\d+$/.test(d.key.code)) return 'function keys';
+      if (MODS[d.key.code]) return 'modifiers';
+      if (/^(UP|DOWN|LEFT|RIGHT|HOME|END|PG_UP|PG_DN)$/.test(d.key.code)) return 'cursor keys';
+      if (/^C_/.test(d.key.code)) return 'media keys';
+      return 'other keys';
+    }
+    if (d.kind === 'macro') return d.steps.length && d.steps.every(printing) ? 'symbols' : 'macros';
+    if (d.kind === 'sticky') return 'sticky modifiers';
+    if (d.kind === 'mouse') return 'mouse keys';
+    if (d.kind === 'layer') return 'layer keys';
+    if (d.danger) return 'firmware keys';
+    if (d.kind === 'special') return 'board controls';
+    return null;
+  }
+
+  function list(xs) { return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]; }
+
+  function note(layout, n) {
+    var m = model(layout), ws = ways(layout, n), active = route(layout, n), parts = [];
+    var here = m.at[n].map(function (d, pos) { return { pos: pos, d: d }; });
+    var own = here.filter(function (k) { return k.d.kind !== 'trans' && k.d.kind !== 'none'; });
+    var risky = own.filter(function (k) { return k.d.danger; });
+    var finger = ws.length && ws.every(function (w) { return w.how === 'hold' && w.hold.length === 1; }) &&
+      ws.every(function (w) { return holdOf(lookup(m, baseActive(w.base), w.hold[0]).d).mods.length; });
+
+    if (bases(layout).indexOf(n) >= 0) {
+      var kinds = own.concat(here.filter(function (k) { return k.d.kind === 'trans'; }).map(function (k) {
+        return { pos: k.pos, d: lookup(m, active, k.pos).d };
+      }));
+      var auto = kinds.some(function (k) { var d = k.d; return d.kind === 'holdtap' && d.hold.kind === 'key' && d.tap.kind === 'key' && d.hold.key.code === d.tap.key.code && d.hold.key.mods.indexOf('Shift') >= 0; });
+      var hrm = kinds.some(function (k) { return k.d.kind === 'holdtap' && holdOf(k.d).mods.length && printing(k.d.tap); });
+      parts.push('Base mode' + (n === 0 ? ', the default' : '') + ': ' +
+        (auto ? 'Autoshift: hold a key a little longer for its shifted character.'
+          : hrm ? 'home-row mods: hold a home-row letter for a modifier, tap it for the letter.'
+          : 'plain letters, no home-row mods.'));
+      var sw = ws.filter(function (w) { return w.how === 'switch' && w.base === 0; });
+      if (sw.length) parts.push('Switch to it: ' + wayWords(layout, sw[0]).replace(/^./, function (c) { return c.toLowerCase(); }));
+      else if (n === 0) parts.push('It is on when the board starts.');
+    } else if (finger) {
+      var w = ws[0], fk = lookup(m, baseActive(w.base), w.hold[0]).d, mod = holdOf(fk).mods.map(function (c) { return MODS[c]; }).join('+');
+      var letter = label(layout, fk.tap);
+      var stacked = own.filter(function (k) { return k.d.kind === 'holdtap' && holdOf(k.d).mods.length; }).map(function (k) {
+        return { key: label(layout, lookup(m, baseActive(w.base), k.pos).d), mod: holdOf(k.d).mods.map(function (c) { return MODS[c]; }).join('+') };
+      });
+      var other = stacked.filter(function (x) { return x.mod !== mod; })[0];
+      var same = own.filter(function (k) { return k.d.kind === 'macro' && k.d.letsGo; }).length;
+      parts.push('Home-row-mod machinery for ' + letter + ': it turns on by itself while you hold ' + letter + ' (' + mod + '); you never pick it.');
+      parts.push('Cross-hand: keys on the other hand do what they do on the base layer, so ' + letter + '+key gives ' + mod + '+key.');
+      if (stacked.length) parts.push('Stacked: the other home-row keys on this hand still hold their mods, ' +
+        list(stacked.map(function (x) { return x.key + ' (' + x.mod + ')'; })) + ', so you can hold two or three' +
+        (other ? ' for chords like ' + mod + '+' + other.mod : '') + '.');
+      if (same) parts.push('Same-hand: the other ' + same + ' keys on this hand type ' + letter + ' then that key and let go of ' + mod + ', so a fast roll stays letters.');
+    } else {
+      if (ws.length) parts.push(wayWords(layout, ws[0]));
+      if (!own.length) {
+        var below = lookup(m, active.filter(function (l) { return l < n; }), 0);
+        parts.push('Every key passes through' + (below ? ' to ' + layerName(layout, below.layer) : '') + '.');
+        (layout.inputListeners || []).forEach(function (il) {
+          (il.nodes || []).forEach(function (nd) {
+            if ((nd.layers || []).indexOf(n) < 0) return;
+            (nd.inputProcessors || []).forEach(function (ip) {
+              if (/scaler/.test(ip.code) && ip.params && ip.params.length === 2 && /mmv/.test(il.code))
+                parts.push('Holding it only changes the pointer speed: ×' + ip.params[0] + (ip.params[1] !== 1 ? '/' + ip.params[1] : '') + '.');
+            });
+          });
+        });
+      } else {
+        var count = {};
+        own.forEach(function (k) { var c = category(k.d); if (c) count[c] = (count[c] || 0) + 1; });
+        var cats = Object.keys(count).sort(function (a, b) { return count[b] - count[a]; });
+        parts.push('Has ' + list(cats.slice(0, 4).map(function (c) { return count[c] + ' ' + c; })) + '.');
+      }
+    }
+    if (risky.length)
+      parts.push('Careful: ' + list(union([], risky.map(function (k) { return k.d.label; }))) +
+        ' reboot, reflash or unpair the board. They are outlined in red.');
+    return parts.join(' ');
   }
 
   // What key `pos` does on layer `n`: labels for the picture, plain words, and for a
-  // pass-through key the layer it falls through to.
-  function key(layout, n, pos) {
-    var d = resolve(layout, layout.layers[n][pos]);
+  // pass-through key the layer it falls through to: the next lower layer in `active`
+  // (the layers on, by default the first way to reach n), as ZMK resolves it.
+  function key(layout, n, pos, active) {
+    var m = model(layout), d = m.at[n][pos];
     if (d.kind === 'trans') {
-      var to = below(layout, n);
-      if (to === null) return { kind: 'trans', tap: '▽', hold: null, words: 'pass-through, to nothing', through: null, danger: false };
-      var k = key(layout, to, pos);
-      return { kind: 'trans', tap: k.tap, hold: k.hold, danger: k.danger,
-        through: k.through || layerName(layout, to),
-        words: 'Pass-through: does what ' + (k.through || layerName(layout, to)) + ' does here. ' + cap(k.words) };
+      var lower = (active || route(layout, n)).filter(function (l) { return l < n; });
+      var hit = lookup(m, lower, pos);
+      if (!hit) return { kind: 'trans', tap: '▽', hold: null, words: 'pass-through, to nothing', through: null, danger: false,
+        types: null, mods: [] };
+      var k = key(layout, hit.layer, pos);
+      var to = layerName(layout, hit.layer);
+      return { kind: 'trans', tap: k.tap, hold: k.hold, danger: k.danger, through: to, types: k.types, mods: k.mods,
+        words: 'Pass-through: does what ' + to + ' does here. ' + cap(k.words) };
     }
     var w = words(layout, d);
     return {
@@ -326,7 +769,10 @@ var Reach = (function () {
       hold: d.kind === 'holdtap' ? holdLabel(layout, d.hold) : null,
       words: /\.$/.test(w) ? w : cap(w) + '.',
       through: null,
-      danger: danger(d)
+      danger: danger(d),
+      // What a tap types (a character, or null), and the modifiers a hold gives.
+      types: text(d.kind === 'holdtap' ? d.tap : d),
+      mods: holdOf(d).mods.map(function (c) { return MODS[c]; })
     };
   }
 
@@ -334,9 +780,317 @@ var Reach = (function () {
     return layout.layer_names.map(function (name, index) { return { index: index, name: name }; });
   }
 
-  return { layers: layers, key: key, resolve: resolve };
+  return { board: board, layers: layers, key: key, resolve: resolve, reach: reach, paths: paths, ways: ways, route: route,
+    bases: bases, note: note, combos: combos, wayWords: wayWords };
 })();
 if (typeof module !== 'undefined') module.exports = Reach;
+</script>
+
+<script id="drill">
+// Drill: the engine every drill uses, and the letter stages. Reads the Layout only through Reach.
+// Loadable by Node with no browser (tests/page.js).
+var Drill = (function () {
+  'use strict';
+
+  var WIDTH = 60, LINES = 3;
+
+  // Common English words, most common first. Built in: the page never touches the network.
+  var WORDS = ('the of and to in is it you that he was for on are with as his they be at one have this from ' +
+    'or had by hot word but what some we can out other were all there when up use your how said an each she ' +
+    'which do their time if will way about many then them write would like so these her long make thing see ' +
+    'him two has look more day could go come did number sound no most people my over know water than call ' +
+    'first who may down side been now find any new work part take get place made live where after back little ' +
+    'only round man year came show every good me give our under name very through just form sentence great ' +
+    'think say help low line differ turn cause much mean before move right boy old too same tell does set ' +
+    'three want air well also play small end put home read hand port large spell add even land here must big ' +
+    'high such follow act why ask men change went light kind off need house picture try us again animal point ' +
+    'mother world near build self earth father head stand own page should country found answer school grow ' +
+    'study still learn plant cover food sun four between state keep eye never last let thought city tree cross ' +
+    'farm hard start might story saw far sea draw left late run while press close night real life few north ' +
+    'open seem together next white children begin got walk example ease paper group always music those both ' +
+    'mark often letter until mile river car feet care second book carry took science eat room friend began ' +
+    'idea fish mountain stop once base hear horse cut sure watch color face wood main enough plain girl usual ' +
+    'young ready above ever red list though feel talk bird soon body dog family direct pose leave song measure ' +
+    'door product black short numeral class wind question happen complete ship area half rock order fire south ' +
+    'problem piece told knew pass since top whole king space heard best hour better true during hundred five ' +
+    'remember step early hold west ground interest reach fast verb sing listen six table travel less morning ' +
+    'ten simple several vowel toward war lay against pattern slow center love person money serve appear road ' +
+    'map rain rule govern pull cold notice voice unit power town fine certain fly fall lead cry dark machine ' +
+    'note wait plan figure star box noun field rest correct able pound done beauty drive stood contain front ' +
+    'teach week final gave green oh quick develop ocean warm free minute strong special mind behind clear tail ' +
+    'produce fact street inch multiply nothing course stay wheel full force blue object decide surface deep ' +
+    'moon island foot system busy test record boat common gold possible plane stead dry wonder laugh thousand ' +
+    'ago ran check game shape equate miss brought heat snow tire bring yes distant fill east paint language ' +
+    'among grand ball yet wave drop heart present heavy dance engine position arm wide sail material size vary ' +
+    'settle speak weight general ice matter circle pair include divide syllable felt perhaps pick sudden count ' +
+    'square reason length represent art subject region energy hunt probable bed brother egg ride cell believe ' +
+    'fraction forest sit race window store summer train sleep prove lone exercise wall catch mount wish sky ' +
+    'board joy winter sat written wild instrument kept glass grass cow job edge sign visit past soft fun bright ' +
+    'gas weather month million bear finish happy hope flower clothe strange gone jump baby eight village meet ' +
+    'root buy raise solve metal whether push seven paragraph third shall held hair describe cook floor either ' +
+    'result burn hill safe cat century consider type law bit coast copy phrase silent tall sand soil roll ' +
+    'temperature finger industry value fight lie beat excite natural view sense ear else quite broke case ' +
+    'middle kill son lake moment scale loud spring child straight consonant nation dictionary milk speed method ' +
+    'organ pay age section dress cloud surprise quiet stone tiny climb cool design poor lot experiment bottom ' +
+    'key iron single stick flat twenty skin smile crease hole trade melody trip office receive row mouth exact ' +
+    'symbol die least trouble shout except wrote seed tone join suggest clean break lady yard rise bad blow oil ' +
+    'blood touch grew cent mix team wire cost lost brown wear garden equal sent choose fell fit flow fair bank ' +
+    'collect save control decimal gentle woman captain practice separate difficult doctor please protect noon ' +
+    'whose locate ring character insect caught period indicate radio spoke atom human history effect electric ' +
+    'expect crop modern element hit student corner party supply bone rail imagine provide agree thus capital ' +
+    'chair danger fruit rich thick soldier process operate guess necessary sharp wing create neighbor wash bat ' +
+    'rather crowd corn compare poem string bell depend meat rub tube famous dollar stream fear sight thin ' +
+    'triangle planet hurry chief colony clock mine tie enter major fresh search send yellow gun allow print ' +
+    'dead spot desert suit current lift rose arrive master track parent shore division sheet substance favor ' +
+    'connect post spend chord fat glad original share station dad bread charge proper bar offer segment slave ' +
+    'duck instant market degree populate chick dear enemy reply drink occur support speech nature range steam ' +
+    'motion path liquid log meant quotient teeth shell neck oxygen sugar death pretty skill women season ' +
+    'solution magnet silver thank branch match suffix especially fig afraid huge sister steel discuss forward ' +
+    'similar guide experience score apple bought led pitch coat mass card band rope slip win dream evening ' +
+    'condition feed tool total basic smell valley nor double seat continue block chart hat sell success company ' +
+    'subtract event particular deal swim term opposite wife shoe shoulder spread arrange camp invent cotton born ' +
+    'determine quart nine truck noise level chance gather shop stretch throw shine property column molecule ' +
+    'select wrong gray repeat require broad prepare salt nose plural anger claim continent ' +
+    'tea hen hint stain risen stir strain shy ant tan tin nest hearth thine signs sting tent rent tight ' +
+    'stare tray sheen agent stage hate rate gate sane siren stern niece sneer sentry eager nasty these').split(' ');
+  // Real lines for the second Symbol stage: shell, then Python. Built in, like the words.
+  var CODE = [
+    'ls -la ~/rs | grep -v "^d"',
+    'cd "$(git rev-parse --show-toplevel)" && make',
+    'git log --oneline -n 10 | cut -c1-7',
+    'find . -name "*.py" -exec wc -l {} +',
+    'echo "${HOME}/bin:$PATH" > /tmp/path.txt',
+    'for f in *.md; do echo "$f"; done',
+    'grep -rn "TODO" src/ 2>/dev/null || true',
+    'tar -czf backup.tar.gz ~/notes && ls -lh *.gz',
+    'export EDITOR=vim; [[ -n "$EDITOR" ]] && echo ok',
+    'jq \'.layers[0] | length\' config/go60.json',
+    'sed -i \'s/foo/bar/g\' a.txt; cat a.txt',
+    'ps aux | awk \'{print $2, $11}\' | sort -n',
+    'curl -s localhost:8080/api?q=1 | jq .',
+    'x=$((x + 1)); echo "count: $x"',
+    'ssh -p 2222 user@host \'df -h /\'',
+    'cp -r src/ dst/ && diff -r src dst',
+    'def add(a, b):',
+    'return {"name": name, "tags": [t for t in tags]}',
+    'if x is not None and len(xs) > 0:',
+    'print(f"{i:>3}: {line!r}")',
+    'with open(path, "w") as f: f.write(text)',
+    'import os, sys; args = sys.argv[1:]',
+    'xs = [n * 2 for n in range(10) if n % 3 == 0]',
+    'd = {k: v for k, v in pairs.items()}',
+    'class Point: x: int = 0; y: int = 0',
+    'except (KeyError, ValueError) as e: raise',
+    'total += price * qty  # with tax',
+    'assert a[-1] == b[::-1][0], "mismatch"',
+    'lambda s: s.strip().lower() != ""',
+    '@dataclass(frozen=True)',
+    'ok = x & mask | (y ^ 0xff) << 2',
+    'path = os.path.join(root, "*.txt")'
+  ];
+  var CONTRACTIONS = "don't it's can't i'm you're we're isn't that's there's won't i've let's they're didn't".split(' ');
+
+  // --- The engine ----------------------------------------------------------------
+  // A drill is a list of tokens: a printing character, or (later drills) a key or chord name.
+  // Each input is what the board sent; t is its time in ms.
+  function engine(tokens) {
+    var e = { tokens: tokens.slice(), pos: 0, errors: 0, blocked: false, start: null, end: null };
+    e.done = function () { return e.pos >= e.tokens.length; };
+    e.input = function (sent, t) {
+      if (e.done()) return 'done';
+      t = t === undefined ? Date.now() : t;
+      if (e.start === null) e.start = t;
+      if (sent !== e.tokens[e.pos]) { e.errors++; e.blocked = true; return 'wrong'; }
+      e.pos++;
+      e.blocked = false;
+      if (!e.done()) return 'ok';
+      e.end = t;
+      return 'done';
+    };
+    // Accuracy: right presses over all presses. Words per minute: five tokens a word, first press to last.
+    e.stats = function () {
+      var n = e.tokens.length, ms = e.end === null ? 0 : e.end - e.start;
+      return { accuracy: n / (n + e.errors), wpm: ms > 0 ? (n / 5) / (ms / 60000) : 0, errors: e.errors, ms: ms };
+    };
+    return e;
+  }
+
+  // Lines of at most `width` tokens, not counting the space that ends one, broken after a space:
+  // [start, end) index pairs.
+  function wrap(tokens, width) {
+    var lines = [], start = 0, brk = -1;
+    for (var i = 0; i < tokens.length; i++) {
+      if (tokens[i] !== ' ' && i - start >= width && brk > start) { lines.push([start, brk]); start = brk; }
+      if (tokens[i] === ' ') brk = i + 1;
+    }
+    if (start < tokens.length) lines.push([start, tokens.length]);
+    return lines;
+  }
+
+  // --- Letter stages, from the Layout's rows ------------------------------------------
+
+  function letterOf(layout, pos) {
+    var t = Reach.key(layout, 0, pos).types;
+    return t && /^[a-z]$/.test(t) ? t : null;
+  }
+
+  // The home row is the row of the board description with the most home-row mods: letters that hold a modifier.
+  var STAGES = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+
+  function stages(layout, keys) {
+    var memo = STAGES && STAGES.get(layout);
+    if (!memo) { memo = build(layout, keys); if (STAGES) STAGES.set(layout, memo); }
+    return memo;
+  }
+
+  function build(layout, keys) {
+    var rows = {};
+    keys.forEach(function (k, pos) { (rows[k.row] = rows[k.row] || []).push(pos); });
+    var home = null, best = 0;
+    Object.keys(rows).forEach(function (r) {
+      var n = rows[r].filter(function (p) { return letterOf(layout, p) && Reach.key(layout, 0, p).mods.length; }).length;
+      if (n > best) { best = n; home = Number(r); }
+    });
+    function letters(r) { return (rows[r] || []).map(function (p) { return letterOf(layout, p); }).filter(Boolean); }
+    var h = home === null ? [] : letters(home), t = h.concat(letters(home - 1)), b = t.concat(letters(home + 1));
+    var all = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(function (c) { return Reach.reach(layout, c); });
+    var punct = [',', '.', ';', "'"].filter(function (c) { return Reach.reach(layout, c); });
+    var capsWord = !!Reach.reach(layout, 'Caps Word');
+    var sym = symbolStages(layout);
+    return [
+      { name: 'Home row', letters: h },
+      { name: 'Plus the top row', letters: t },
+      { name: 'Plus the bottom row', letters: b },
+      { name: 'All letters', letters: all },
+      { name: 'Capitals' + (punct.length ? ', punctuation ' + punct.join(' ') : '') + (capsWord ? ' and Caps Word' : ''), letters: all, capitals: true,
+        punct: punct, capsWord: capsWord }
+    ].concat(sym);
+  }
+
+  // --- Symbol stages, from the layer that carries the symbols ------------------------
+
+  // The path through `layer` with no modifier held: the one to teach for a symbol on it.
+  function through(layout, c, layer) {
+    return Reach.paths(layout, c, 0).filter(function (p) { return p.layer === layer && !p.mods.length; })[0] || null;
+  }
+
+  // The symbols layer n's own keys send, each reachable through n with no modifier held.
+  function symbolsOn(layout, n) {
+    var symbols = [];
+    layout.layers[n].forEach(function (b, pos) {
+      var k = Reach.key(layout, n, pos);
+      if (k.kind === 'trans' || !k.types || k.types.length !== 1 || /[a-z0-9 ]/i.test(k.types)) return;
+      if (symbols.indexOf(k.types) < 0 && through(layout, k.types, n)) symbols.push(k.types);
+    });
+    return symbols;
+  }
+
+  // The Symbol layer, whatever it is named: the layer, not a base mode, whose keys send the most symbols,
+  // and more than the base does. Two stages either way; with no such layer, they fail loud when started.
+  function symbolStages(layout) {
+    var bases = Reach.bases(layout), n = null, symbols = symbolsOn(layout, 0);
+    for (var l = 0; l < layout.layers.length; l++) {
+      if (bases.indexOf(l) >= 0) continue;
+      var s = symbolsOn(layout, l);
+      if (s.length > symbols.length) { n = l; symbols = s; }
+    }
+    var missing = n === null ? 'no layer sends more symbols than the base does, so there is no Symbol layer to drill.' : null;
+    if (missing) symbols = [];
+    return [
+      { name: 'Symbols: random groups', letters: [], symbols: symbols, layer: n, groups: true, missing: missing },
+      { name: 'Symbols: shell and Python lines', letters: [], symbols: symbols, layer: n, code: true, missing: missing }
+    ];
+  }
+
+  // Pieces joined by spaces, as many as fill LINES lines of `width`.
+  function fill(next, width) {
+    var tokens = [];
+    for (;;) {
+      var t = tokens.concat(tokens.length ? [' '] : [], next().split(''));
+      if (wrap(t, width).length > LINES) return tokens;
+      tokens = t;
+    }
+  }
+
+  function symbolDrill(layout, st, rng, width) {
+    if (st.missing) throw new Error(st.name + ': ' + st.missing);
+    if (!Reach.reach(layout, ' ')) throw new Error(st.name + ': this Layout has no Space to put between pieces.');
+    var pick = function (xs) { return xs[Math.floor(rng() * xs.length)]; };
+    if (st.groups) return fill(function () {
+      var g = '', len = 2 + Math.floor(rng() * 4);
+      while (g.length < len) g += pick(st.symbols);
+      return g;
+    }, width);
+    var lines = CODE.filter(function (l) { return l.split('').every(function (c) { return Reach.reach(layout, c); }); });
+    if (!lines.length) throw new Error(st.name + ': no built-in line uses only keys this Layout can send.');
+    return fill(function () { return pick(lines); }, width);
+  }
+
+  // A drill for stage n: random words that use only the stage's letters, filling LINES lines of WIDTH.
+  function generate(layout, keys, n, rng, width) {
+    var st = stages(layout, keys)[n];
+    rng = rng || Math.random;
+    width = width || WIDTH;
+    if (st.symbols) return symbolDrill(layout, st, rng, width);
+    var ok = {};
+    st.letters.concat(st.capitals ? st.punct : []).forEach(function (c) { ok[c] = true; });
+    var fits = function (w) { return w.split('').every(function (c) { return ok[c]; }); };
+    var pool = WORDS.filter(fits).concat(st.capitals ? CONTRACTIONS.filter(fits) : []);
+    if (!pool.length) throw new Error(st.name + ': no built-in word uses only this stage\'s letters (' + st.letters.join(' ') + ').');
+    var has = function (c) { return st.punct && st.punct.indexOf(c) >= 0; };
+    var tokens = [], sentence = true;
+    for (;;) {
+      var w = pool[Math.floor(rng() * pool.length)];
+      if (st.capitals) {
+        if (/^i('|$)/.test(w)) w = 'I' + w.slice(1);
+        if (st.capsWord && w.length > 1 && /^[a-z]+$/.test(w) && rng() < 0.1) w = w.toUpperCase();
+        else if (sentence) w = w.charAt(0).toUpperCase() + w.slice(1);
+        sentence = false;
+        var r = rng();
+        if (r < 0.15 && has('.')) { w += '.'; sentence = true; }
+        else if (r < 0.25 && has(',')) w += ',';
+        else if (r < 0.3 && has(';')) w += ';';
+      }
+      var next = tokens.concat(tokens.length ? [' '] : [], w.split(''));
+      if (wrap(next, width).length > LINES) return tokens;
+      tokens = next;
+    }
+  }
+
+  function isCap(c) { return /^[A-Z]$/.test(c || ''); }
+
+  // The path to light for token i in stage st: the Reach path, except in a capitals word (two or more capitals),
+  // which starts with Caps Word and goes on with plain letters, and in a Symbol stage, where a symbol
+  // goes through the Symbol layer even if a base key also sends it.
+  function hint(layout, tokens, i, st) {
+    var c = tokens[i];
+    if (st && st.symbols && st.symbols.indexOf(c) >= 0) return through(layout, c, st.layer);
+    if (isCap(c) && (isCap(tokens[i - 1]) || isCap(tokens[i + 1]))) {
+      var cw = Reach.reach(layout, 'Caps Word'), l = Reach.reach(layout, c.toLowerCase());
+      if (cw && l && isCap(tokens[i - 1]))
+        return { hold: l.hold, tap: l.tap, layer: l.layer, active: l.active, words: 'Caps Word is on: ' + l.words };
+      if (cw && l && !cw.hold.length)
+        return { hold: [], tap: cw.tap.concat(l.tap), layer: l.layer, active: l.active,
+          words: cw.words.replace(/\.\s.*/, '') + ' (Caps Word), then type the word: it comes out in capitals.' };
+    }
+    return Reach.reach(layout, c);
+  }
+
+  // The key that shows or hides the picture, in a drill too: not a printing character, so no drill asks for it.
+  var PICTURE = 'Tab';
+
+  // What a key press means to a drill: 'picture', a character, 'chord' (a home-row mod that fired
+  // instead of a letter), or null (a modifier alone, or a key that sends no character).
+  function read(e) {
+    if (e.key === PICTURE) return 'picture';
+    if (/^(Shift|Control|Alt|AltGraph|Meta|OS|Super|Hyper|CapsLock|NumLock|ScrollLock|Fn|Dead|Unidentified)$/.test(e.key)) return null;
+    if (e.ctrlKey || e.altKey || e.metaKey) return 'chord';
+    return e.key.length === 1 ? e.key : null;
+  }
+
+  return { WIDTH: WIDTH, LINES: LINES, PICTURE: PICTURE, engine: engine, wrap: wrap, stages: stages, generate: generate,
+    hint: hint, read: read };
+})();
 </script>
 
 <script>
@@ -344,18 +1098,39 @@ if (typeof module !== 'undefined') module.exports = Reach;
   'use strict';
   var layout = JSON.parse(document.getElementById('data-layout').textContent);
   var keys = JSON.parse(document.getElementById('data-keys').textContent);
+  Reach.board(layout, keys);
   var U = 54, GAP = 4, NS = 'http://www.w3.org/2000/svg';
-  var state = { layer: 0, pos: null };
+  var names = Reach.layers(layout).map(function (l) { return l.name; });
+  // layer: shown; active: the layers on (the route, which decides pass-through); hl: a path lit by search.
+  var state = { layer: 0, active: Reach.route(layout, 0), pos: null, hl: null };
 
   document.getElementById('title').textContent = layout.title || '';
 
-  var nav = document.getElementById('layers');
-  Reach.layers(layout).forEach(function (l) {
-    var b = document.createElement('button');
-    b.textContent = l.name;
-    b.onclick = function () { state.layer = l.index; draw(); };
-    nav.appendChild(b);
+  var nav = document.getElementById('layers'), buttons = [];
+  var bases = Reach.bases(layout);
+  [['Base modes', function (l) { return bases.indexOf(l.index) >= 0; }],
+   ['Layers', function (l) { return bases.indexOf(l.index) < 0; }]].forEach(function (g) {
+    var group = document.createElement('div');
+    group.className = 'group';
+    var h = document.createElement('span');
+    h.textContent = g[0] + ':';
+    group.appendChild(h);
+    Reach.layers(layout).filter(g[1]).forEach(function (l) {
+      var b = document.createElement('button');
+      b.textContent = l.name;
+      b.onclick = function () { show(l.index); };
+      buttons[l.index] = b;
+      group.appendChild(b);
+    });
+    nav.appendChild(group);
   });
+
+  function show(n, active) {
+    state.layer = n;
+    state.active = active || Reach.route(layout, n);
+    state.hl = null;
+    draw();
+  }
 
   function el(name, attrs, parent) {
     var e = document.createElementNS(NS, name);
@@ -364,7 +1139,24 @@ if (typeof module !== 'undefined') module.exports = Reach;
     return e;
   }
 
+  function html(tag, cls, text, parent) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
   function fit(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+  // A key's centre on the picture, after its rotation.
+  // A point on a key, after its rotation: its centre moved by (dx, dy) key widths.
+  function spot(k, dx, dy) {
+    var x = (k.x + (k.w || 1) / 2 + dx) * U - GAP / 2, y = (k.y + (k.h || 1) / 2 + dy) * U - GAP / 2;
+    if (!k.r) return [x, y];
+    var a = k.r * Math.PI / 180, ox = k.rx * U, oy = k.ry * U;
+    return [ox + (x - ox) * Math.cos(a) - (y - oy) * Math.sin(a), oy + (x - ox) * Math.sin(a) + (y - oy) * Math.cos(a)];
+  }
 
   var svg = document.getElementById('board');
   var maxX = 0, maxY = 0;
@@ -372,12 +1164,14 @@ if (typeof module !== 'undefined') module.exports = Reach;
   svg.setAttribute('viewBox', [-GAP, -GAP, maxX * U + 2 * GAP, maxY * U + 2 * GAP].join(' '));
 
   function draw() {
-    Array.prototype.forEach.call(nav.children, function (b, i) { b.setAttribute('aria-pressed', i === state.layer); });
+    buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', i === state.layer); });
     svg.textContent = '';
+    var hl = state.hl || { hold: [], tap: [] };
     keys.forEach(function (k, pos) {
-      var r = Reach.key(layout, state.layer, pos);
-      var g = el('g', { 'class': 'k ' + r.kind + (r.danger ? ' danger' : '') + (pos === state.pos ? ' sel' : ''),
-        transform: k.r ? 'rotate(' + k.r + ' ' + k.rx * U + ' ' + k.ry * U + ')' : '' }, svg);
+      var r = Reach.key(layout, state.layer, pos, state.active);
+      var cls = 'k ' + r.kind + (r.danger ? ' danger' : '') + (pos === state.pos ? ' sel' : '') +
+        (hl.hold.indexOf(pos) >= 0 ? ' h-hold' : '') + (hl.tap.indexOf(pos) >= 0 ? ' h-tap' : '');
+      var g = el('g', { 'class': cls, transform: k.r ? 'rotate(' + k.r + ' ' + k.rx * U + ' ' + k.ry * U + ')' : '' }, svg);
       g.onclick = function () { state.pos = pos; draw(); };
       el('title', {}, g).textContent = r.words;
       var x = k.x * U, y = k.y * U, w = (k.w || 1) * U - GAP, h = (k.h || 1) * U - GAP;
@@ -388,36 +1182,171 @@ if (typeof module !== 'undefined') module.exports = Reach;
       t.textContent = tap;
       if (r.hold) el('text', { 'class': 'hold', x: x + w / 2, y: y + h * 0.78 }, g).textContent = fit(r.hold, 9);
     });
+    // Combos: their keys linked, with the result at the middle.
+    if (!drill.on && document.getElementById('show-combos').checked) {
+      Reach.combos(layout, state.active).forEach(function (c) {
+        var pts = c.keys.map(function (p) { return spot(keys[p], 0.32, 0.32); });
+        var g = el('g', { 'class': 'combo' }, svg);
+        el('title', {}, g).textContent = 'Combo: press these together. ' + c.words + '.';
+        el('polyline', { points: pts.map(function (p) { return p.join(','); }).join(' ') }, g);
+        pts.forEach(function (p) { el('circle', { cx: p[0], cy: p[1], r: 4 }, g); });
+        var mx = pts.reduce(function (s, p) { return s + p[0]; }, 0) / pts.length;
+        var my = pts.reduce(function (s, p) { return s + p[1]; }, 0) / pts.length;
+        var label = fit(c.tap, 10), w = label.length * 6 + 8;
+        el('rect', { x: mx - w / 2, y: my - 9, width: w, height: 18, rx: 4 }, g);
+        el('text', { x: mx, y: my }, g).textContent = label;
+      });
+    }
+    about();
     info();
+  }
+
+  // The layer's note, and each way to reach it; picking a way sets the layers on (and so the pass-through).
+  function about() {
+    document.getElementById('note').textContent = Reach.note(layout, state.layer);
+    var box = document.getElementById('ways');
+    box.textContent = '';
+    var ws = Reach.ways(layout, state.layer), seen = {}, pressed = false;
+    if (!ws.length) { html('div', 'where', 'No key turns this layer on.', box); return; }
+    html('span', 'where', 'Reach it: ', box);
+    ws.forEach(function (w) {
+      var kind = w.base + w.how + w.active.join();
+      if (seen[kind]) return;
+      seen[kind] = true;
+      var b = html('button', '', Reach.wayWords(layout, w), box);
+      var on = !pressed && w.active.join() === state.active.join();
+      pressed = pressed || on;
+      b.setAttribute('aria-pressed', on);
+      b.title = 'Layers on: ' + w.active.map(function (l) { return names[l]; }).join(', ') + '. Pass-through keys follow this route.';
+      b.onclick = function () { state.active = w.active; state.hl = { hold: w.hold, tap: w.tap === null ? [] : [w.tap] }; draw(); };
+    });
   }
 
   function info() {
     var box = document.getElementById('info');
-    if (state.pos === null) { box.textContent = 'Select a key.'; return; }
-    var r = Reach.key(layout, state.layer, state.pos);
     box.textContent = '';
-    var where = document.createElement('div');
-    where.className = 'where';
-    where.textContent = layout.layer_names[state.layer] + ' · ' + (keys[state.pos].label || 'key ' + state.pos);
-    var what = document.createElement('div');
-    what.textContent = r.words;
-    box.appendChild(where);
-    box.appendChild(what);
-    if (r.danger) {
-      var d = document.createElement('div');
-      d.className = 'danger';
-      d.textContent = 'Careful: this key reboots, unpairs or reflashes the board.';
-      box.appendChild(d);
+    if (state.pos === null) { box.textContent = 'Select a key.'; return; }
+    var r = Reach.key(layout, state.layer, state.pos, state.active);
+    html('div', 'where', names[state.layer] + ' · ' + (keys[state.pos].label || 'key ' + state.pos), box);
+    html('div', '', r.words, box);
+    if (r.danger) html('div', 'danger', 'Careful: this key reboots, unpairs or reflashes the board.', box);
+  }
+
+  // Search: where does this character or key live, and what do I hold?
+  var search = document.getElementById('search'), found = document.getElementById('found');
+  function find() {
+    var q = search.value;
+    if (!q) { found.textContent = ''; state.hl = null; draw(); return; }
+    var p = Reach.reach(layout, q);
+    if (!p) { found.textContent = 'Not on the board (from ' + names[0] + ').'; state.hl = null; draw(); return; }
+    state.layer = p.layer;
+    state.active = p.active;
+    state.hl = { hold: p.hold, tap: p.tap };
+    state.pos = p.tap.length ? p.tap[0] : p.hold[p.hold.length - 1];
+    found.textContent = p.words;
+    draw();
+  }
+  search.addEventListener('input', find);
+  search.addEventListener('keydown', function (e) { if (e.key === 'Escape') { search.value = ''; find(); search.blur(); } });
+  document.getElementById('show-combos').addEventListener('change', draw);
+
+  // --- Drill: a menu picked from the keyboard, then three lines to type with the next key lit ---
+  var drill = { on: false, stage: 0, eng: null, lines: [], pic: true };
+  var stages = Drill.stages(layout, keys);
+  var dmenu = document.getElementById('drill-menu'), dtext = document.getElementById('drill-text');
+  var dstats = document.getElementById('drill-stats'), dhint = document.getElementById('drill-hint');
+
+  function setMode(on) {
+    drill.on = on;
+    drill.eng = null;
+    document.body.classList.toggle('drilling', on);
+    document.getElementById('drill').hidden = !on;
+    document.getElementById('mode').textContent = on ? 'Drill' : 'Explore';
+    if (on) render(); else show(0);
+  }
+
+  function start(n) {
+    drill.stage = n;
+    var tokens;
+    try { tokens = Drill.generate(layout, keys, n); }
+    catch (err) { drill.eng = null; render(); dstats.textContent = 'Cannot start this drill. ' + err.message; return; }
+    drill.lines = Drill.wrap(tokens, Drill.WIDTH);
+    drill.eng = Drill.engine(tokens);
+    render();
+  }
+
+  function render() {
+    dmenu.textContent = dtext.textContent = dstats.textContent = dhint.textContent = '';
+    document.body.classList.toggle('nopic', !drill.pic);
+    var e = drill.eng;
+    if (!e) {
+      html('div', '', 'Pick a stage: press its number (Enter repeats the last one).', dmenu);
+      var ol = html('ol', '', undefined, dmenu);
+      stages.forEach(function (st, i) {
+        var li = html('li', '', st.name + ' ', ol);
+        li.setAttribute('aria-current', i === drill.stage);
+        html('span', 'letters', st.symbols ? st.symbols.join(' ') : st.letters.join(' ').toUpperCase(), li);
+      });
+      html('div', 'where', Drill.PICTURE + ': picture ' + (drill.pic ? 'on' : 'off') + ', here or in a drill · Esc: back to Explore. ' +
+        'In a drill: a wrong key holds you until you press the right one; Esc comes back here.', dmenu);
+      state.layer = 0; state.active = Reach.route(layout, 0); state.hl = null; state.pos = null;
+      draw();
+      return;
     }
+    drill.lines.forEach(function (ln) {
+      var div = html('div', '', undefined, dtext);
+      for (var i = ln[0]; i < ln[1]; i++)
+        html('span', i < e.pos ? 'done' : i === e.pos ? 'cur' + (e.blocked ? ' bad' : '') : '', e.tokens[i], div);
+    });
+    if (e.done()) {
+      var st = e.stats();
+      dstats.textContent = 'Accuracy ' + Math.round(st.accuracy * 100) + '% · ' + Math.round(st.wpm) + ' wpm · ' +
+        st.errors + ' error' + (st.errors === 1 ? '' : 's') + '. Space or Enter: a new drill. Esc: pick a stage.';
+      state.hl = null;
+      draw();
+      return;
+    }
+    var p = Drill.hint(layout, e.tokens, e.pos, stages[drill.stage]);
+    dstats.textContent = stages[drill.stage].name + ' · ' + Drill.PICTURE + (drill.pic ? ' hides' : ' shows') + ' the picture' + (e.errors ? ' · ' + e.errors + ' error' + (e.errors === 1 ? '' : 's') : '');
+    if (p) {
+      if (drill.pic) dhint.textContent = p.words;
+      state.layer = p.layer; state.active = p.active; state.hl = { hold: p.hold, tap: p.tap }; state.pos = null;
+    }
+    draw();
+  }
+
+  function drillKey(e) {
+    if (e.key === 'Escape') { if (drill.eng) { drill.eng = null; render(); } else setMode(false); return true; }
+    var sent = Drill.read(e);
+    if (sent === 'picture') { drill.pic = !drill.pic; render(); return true; }
+    if (!drill.eng) {
+      var n = Number(e.key);
+      if (/^[1-9]$/.test(e.key) && n <= stages.length) start(n - 1);
+      else if (e.key === 'Enter') start(drill.stage);
+      else return false;
+      return true;
+    }
+    if (drill.eng.done()) {
+      if (e.key !== ' ' && e.key !== 'Enter') return false;
+      start(drill.stage);
+      return true;
+    }
+    if (sent === null) return false;
+    drill.eng.input(sent, e.timeStamp);
+    render();
+    return true;
   }
 
   document.addEventListener('keydown', function (e) {
-    var n = layout.layer_names.length;
-    if (e.key === 'ArrowRight') state.layer = (state.layer + 1) % n;
-    else if (e.key === 'ArrowLeft') state.layer = (state.layer + n - 1) % n;
+    if (drill.on) { if (drillKey(e)) e.preventDefault(); return; }
+    if (e.target === search) return;
+    if (e.key === '/') { e.preventDefault(); search.focus(); return; }
+    if (e.key === 'd') { e.preventDefault(); setMode(true); return; }
+    var n = names.length;
+    if (e.key === 'ArrowRight') show((state.layer + 1) % n);
+    else if (e.key === 'ArrowLeft') show((state.layer + n - 1) % n);
     else return;
     e.preventDefault();
-    draw();
   });
 
   draw();
