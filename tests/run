@@ -217,6 +217,21 @@ check "go60-flash: CI image flashes, exits 0 and removes its download" \
 check "go60-flash: refuses a non-.uf2 file" \
   '! "$ROOT/bin/go60-flash" "$ROOT/README.md" >/dev/null 2>&1'
 
+# --- .github/tag ----------------------------------------------------------
+
+# A bare "remote" with v1..v3 on older commits; the clone's HEAD is untagged.
+r="$T/tag"; mkdir -p "$r"
+git init -q --bare "$r/origin.git" && git -C "$r" clone -q origin.git work 2>/dev/null
+gt() { git -C "$r/work" -c user.name=t -c user.email=t@t "$@"; }
+for n in 1 2 3; do gt commit -q --allow-empty -m "c$n" && gt tag "v$n"; done
+gt tag v10-rc; gt commit -q --allow-empty -m c4 && gt push -q origin HEAD:main --tags
+gt tag -d v1 v2 v3 v10-rc >/dev/null
+tag() { (cd "$r/work" && "$ROOT/.github/tag"); }
+check "tag: tags HEAD with the highest remote v<N> plus one" \
+  '[[ "$(tag)" == v4 ]] && [[ "$(git -C "$r/origin.git" rev-parse v4)" == "$(gt rev-parse HEAD)" ]]'
+check "tag: a rerun on a tagged commit makes no second tag" \
+  '[[ "$(tag)" == v4 ]] && [[ -z "$(git -C "$r/origin.git" tag -l v5)" ]]'
+
 # --- .sandcastle/tracker --------------------------------------------------
 
 k="$T/tracker"; mkdir -p "$k/.scratch/f/issues"
