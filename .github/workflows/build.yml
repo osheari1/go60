@@ -42,6 +42,10 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # One tag run at a time, so two quick pushes don't both pick the same v<N>.
+    concurrency:
+      group: tag
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:

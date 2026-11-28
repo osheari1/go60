@@ -41,7 +41,7 @@ agent edits ──────────────────────�
   - Key positions come from `config/info.json`, the board's own description.
 - `go60-flash` is a wizard: it prompts each bootloader key combo, waits for the drive, checks it, copies.
 - Installed on laptops by the cfg component `go60`, pinned to a tag of this repo.
-- Releases are tagged by CI: each push to `main` that passes `tests/run` gets the next `v<N>` (`.github/tag`).
+- Releases are tagged by CI: each push to `main` that passes the build job (`tests/run` and firmware) gets the next `v<N>` (`.github/tag`).
   Bumping cfg's `pkgver` to that tag is still by hand.
 
 ## Not here
