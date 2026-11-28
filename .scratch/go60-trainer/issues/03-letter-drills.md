@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A drill shows three lines of text; I type through them and can read ahead.
 - [x] A wrong key blocks progress until the right key is pressed, and counts one error.
@@ -20,3 +20,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [x] Suite checks under Node: feed the engine a token list and inputs; assert position, error count and blocking. Every token a letter stage generates is reachable.
 - [x] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
+
+## Comments
+
+- Closed by RALPH: Drill module in lib/trainer.html: engine (position, errors, blocking, accuracy, wpm), three-line wrap, five letter stages from the Layout's rows (info.json row + home-row-mod detection), built-in word list, Caps Word hints; keyboard-only Drill mode with hint picture and toggle; nothing saved. Suite checks the engine, stages, Layout-driven rows and reachability of every generated token. Still needs a human: merge, tag go60, bump cfg's go60 component.
