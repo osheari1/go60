@@ -6,7 +6,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Reach module answers "how do I produce this output?" with the keys to hold and the key or keys to tap, on the base mode `HRM_WinLinx`.
 - [x] It resolves thumb layer holds, home-row mods, shifted keys, combos and pass-through keys.
@@ -22,3 +22,7 @@ Spec: `../spec.md`. Target repo: `~/rs/go60`; read its `CLAUDE.md`, `README.md`,
 - [x] Suite checks under Node, against the repo's Layout: a symbol via a thumb hold, a function key via its combo, a modifier via a home-row hold, a capital via cross-hand Shift, a key found only on `Magic`.
 - [x] The suite prints `all passed`.
 - [ ] Shipped: pull request merged, go60 tagged, the `go60` component in cfg bumped to that tag, and `go60-train --open` works from any directory.
+
+## Comments
+
+- Closed by RALPH: Reach module in lib/trainer.html: Reach.reach/paths (hold + tap path for a character, chord or key name, via thumb holds, home-row mods, shifted keys, combos, pass-through; by structure, not names), Reach.ways (route per base mode), route-aware pass-through (next lower active layer; below() removed), Reach.note (purpose notes; per-finger layers explained; Magic warning), Reach.combos. Explore shows reach routes, notes, combos and a Find box that lights the path. Suite checks for every ticket case; commit 0bcdacb. Still needs a human: merge, tag go60, bump cfg's go60 component.
