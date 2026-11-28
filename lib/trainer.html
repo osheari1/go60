@@ -347,9 +347,38 @@ var Reach = (function () {
     var m = MODELS && MODELS.get(layout);
     if (m) return m;
     m = { at: layout.layers.map(function (l) { return l.map(function (b) { return resolve(layout, b); }); }),
-      states: {}, ways: {}, paths: {} };
+      states: {}, ways: {}, paths: {}, keys: null };
     if (MODELS) MODELS.set(layout, m);
     return m;
+  }
+
+  // The board's key positions (config/info.json), so Reach can tell thumb keys and name keys by place.
+  function board(layout, keys) {
+    var m = model(layout);
+    m.keys = keys;
+    m.ways = {};
+    m.paths = {};
+  }
+
+  function thumb(m, pos) { return !!(m.keys && m.keys[pos] && /(^|_)T\d+$/.test(m.keys[pos].label)); }
+
+  // Where a key sits: its hand, and its row and column counted from the middle of the board.
+  function place(m, pos) {
+    var ks = m.keys, k = ks && ks[pos];
+    if (!k) return 'key ' + pos;
+    var xs = ks.map(function (q) { return q.x; }), mid = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+    var side = function (q) { return q.x < mid ? 'left' : 'right'; };
+    var t = thumb(m, pos);
+    var peers = ks.map(function (q, i) { return i; }).filter(function (i) {
+      return side(ks[i]) === side(k) && (t ? thumb(m, i) : !thumb(m, i) && ks[i].row === k.row);
+    }).sort(function (a, b) { return Math.abs(ks[a].x - mid) - Math.abs(ks[b].x - mid); });
+    var n = peers.indexOf(pos) + 1;
+    return t ? 'the ' + side(k) + '-hand thumb key ' + n : 'the ' + side(k) + '-hand key in row ' + (k.row + 1) + ', column ' + n;
+  }
+
+  // A held key that turns on a layer but is not a thumb key: routes through it rank below thumb layer-holds.
+  function offThumb(m, s) {
+    return s.holds.filter(function (h) { return !h.adds.mods.length && h.adds.layers.length && !thumb(m, h.pos); }).length;
   }
 
   function lookup(m, active, pos) {
@@ -519,27 +548,27 @@ var Reach = (function () {
       if (last && last.adds.mods.length && s.mods.length === last.adds.mods.length) {
         last.adds.mods.forEach(function (c) {
           var d = { kind: 'key', key: { mods: [], code: c } };
-          if (matches(layout, d, q)) found.push(path(layout, s, d, [], null, last.layer));
+          if (matches(layout, d, q)) add(s, path(layout, s, d, [], null, last.layer));
         });
       }
       for (var pos = 0; pos < m.at[0].length; pos++) {
         if (held(s, pos) || !allows(s, pos, false)) continue;
         var hit = lookup(m, s.active, pos), d = hit && withMods(hit.d, s.mods);
-        if (d && matches(layout, d, q)) found.push(path(layout, s, d, [pos], null, hit.layer));
+        if (d && matches(layout, d, q)) add(s, path(layout, s, d, [pos], null, hit.layer));
       }
       activeCombos(layout, s.active).forEach(function (c) {
         if (c.keyPositions.some(function (p) { return held(s, p) || !allows(s, p, false); })) return;
         var d = withMods(resolve(layout, c.binding), s.mods);
-        if (d && matches(layout, d, q)) found.push(path(layout, s, d, c.keyPositions.slice(), c.name, top(s.active)));
+        if (d && matches(layout, d, q)) add(s, path(layout, s, d, c.keyPositions.slice(), c.name, top(s.active)));
       });
     });
-    found.forEach(function (p, i) { p.order = i; });
+    function add(s, p) { found.push({ p: p, order: found.length, off: offThumb(m, s) }); }
     found.sort(function (a, b) {
-      return (a.hold.length + a.tap.length) - (b.hold.length + b.tap.length) || a.hold.length - b.hold.length ||
-        a.mods.length - b.mods.length || a.order - b.order;
+      var x = a.p, y = b.p;
+      return (x.hold.length + x.tap.length) - (y.hold.length + y.tap.length) || x.hold.length - y.hold.length ||
+        a.off - b.off || x.mods.length - y.mods.length || a.order - b.order;
     });
-    found.forEach(function (p) { delete p.order; });
-    return found;
+    return found.map(function (f) { return f.p; });
   }
 
   function reach(layout, query, base) { return paths(layout, query, base)[0] || null; }
@@ -547,10 +576,11 @@ var Reach = (function () {
   // A held key in words: its tap label, and what holding it gives.
   function heldWord(layout, h) {
     // A home-row mod also turns on its per-finger layer; the modifier is what you hold it for.
-    var d = h.d, give = h.adds.mods.length ? h.adds.mods.map(function (c) { return MODS[c]; }).join('+')
+    var m = model(layout), d = h.d, give = h.adds.mods.length ? h.adds.mods.map(function (c) { return MODS[c]; }).join('+')
       : h.adds.layers.map(function (l) { return layerName(layout, l); }).join('+');
     var t = d.kind === 'holdtap' ? label(layout, d.tap) : '';
-    return t && t !== give ? t + ' (' + give + ')' : give;
+    if (t && t !== give) return t + ' (' + give + ')';
+    return m.keys ? place(m, h.pos) + ' (' + give + ')' : give;
   }
 
   function path(layout, s, d, tap, combo, layer) {
@@ -748,7 +778,7 @@ var Reach = (function () {
     return layout.layer_names.map(function (name, index) { return { index: index, name: name }; });
   }
 
-  return { layers: layers, key: key, resolve: resolve, reach: reach, paths: paths, ways: ways, route: route,
+  return { board: board, layers: layers, key: key, resolve: resolve, reach: reach, paths: paths, ways: ways, route: route,
     bases: bases, note: note, combos: combos, wayWords: wayWords };
 })();
 if (typeof module !== 'undefined') module.exports = Reach;
@@ -1038,6 +1068,7 @@ var Drill = (function () {
   'use strict';
   var layout = JSON.parse(document.getElementById('data-layout').textContent);
   var keys = JSON.parse(document.getElementById('data-keys').textContent);
+  Reach.board(layout, keys);
   var U = 54, GAP = 4, NS = 'http://www.w3.org/2000/svg';
   var names = Reach.layers(layout).map(function (l) { return l.name; });
   // layer: shown; active: the layers on (the route, which decides pass-through); hl: a path lit by search.

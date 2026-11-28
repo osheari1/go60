@@ -165,6 +165,11 @@ check "Reach: a key found only on Magic" \
 check "Reach: a chord on a thumb layer" \
   '[[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").map(p => p.hold.length + \",\" + p.tap.length)[0]")" == "\"1,1\"" ]] \
    && [[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").some(p => p.hold == 54 && p.tap == 15)")" == true ]]'
+check "Reach: among equal routes, a thumb layer-hold beats a plain layer key" \
+  '[[ "$(reach "(p => [p.hold, p.layer])(Reach.paths(layout, \"Ctrl+Z\")[0])")" == "[[54],11]" ]] \
+   && reach "Reach.paths(layout, \"Ctrl+Z\")[0].words" | grep -q "^\"Hold ⌫ (Cursor), then tap ⌃Z"'
+check "Reach: a route through a plain layer key names the key" \
+  '[[ "$(reach "Reach.paths(layout, \"Ctrl+Z\").filter(p => p.hold == 47)[0].words")" == "\"Hold the right-hand key in row 4, column 6 (Keypad), then tap ⌃Z. Ctrl+Z.\"" ]]'
 check "Reach: an output the board cannot make is null" '[[ "$(path "\"no such key\"")" == null ]]'
 check "Reach: the path says in words what to do" \
   'reach "Reach.reach(layout, \"{\").words" | grep -q "Hold ␣ (Symbol), then tap {"'
